@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">LifeUpCatcher</string>
+    <string name="accessibility_service_description">Helps capture activity for LifeUpCatcher</string>
+</resources>
