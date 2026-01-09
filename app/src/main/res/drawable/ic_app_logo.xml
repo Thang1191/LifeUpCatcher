@@ -3,11 +3,6 @@
     android:height="108dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-  
-    <!-- White Background -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M0,0h24v24H0z"/>
 
     <!-- Tilted Fishing Hook Group -->
     <group 
