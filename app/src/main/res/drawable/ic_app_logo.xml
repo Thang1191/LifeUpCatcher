@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  
+    <!-- White Background -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M0,0h24v24H0z"/>
+
+    <!-- Tilted Fishing Hook Group -->
+    <group 
+        android:rotation="-25" 
+        android:pivotX="13"
+        android:pivotY="6.5">
+        
+        <!-- Main Hook Body -->
+        <path
+            android:fillColor="#FF1565C0"
+            android:pathData="M13,2 L16,2 L16,14 C16,18.5 12.5,22 8,22 C3.5,22 0,18.5 0,14 L3.5,14 C3.5,16.5 5.5,18.5 8,18.5 C10.5,18.5 12.5,16.5 12.5,14 L12.5,2 L13,2 Z"/>
+
+        <!-- Sharp Barb at the tip -->
+        <path
+            android:fillColor="#FF1565C0"
+            android:pathData="M0,14 L4,14 L0,10 Z"/>
+            
+        <!-- Eyelet (Loop) at the top -->
+        <path
+            android:fillColor="#FF1565C0"
+            android:pathData="M14.5,4.5 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M14.5,4.5 m-1,0 a1,1 0 1,1 2,0 a1,1 0 1,1 -2,0" />
+    </group>
+</vector>
