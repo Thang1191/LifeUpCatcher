@@ -21,7 +21,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import rikka.shizuku.Shizuku
 
@@ -31,13 +33,22 @@ class MyAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     
     // Cache structures for O(1) lookups and to avoid frequent I/O
+    @Volatile
     private var groupsMap: Map<String, Set<String>> = emptyMap()
+    
+    @Volatile
     private var blockedPackagesCache: Map<String, String?> = emptyMap()
+    
     private var lastForegroundPackage: String? = null
+    
+    // Cache for Shizuku state to avoid redundant commands
+    private val lastAppliedPackageStates = mutableMapOf<String, Boolean>()
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == "app_groups") {
-            loadGroups(prefs)
+            serviceScope.launch {
+                loadGroups(prefs)
+            }
         }
     }
 
@@ -54,11 +65,9 @@ class MyAccessibilityService : AccessibilityService() {
                     val currentItem = ShopItemRepository.items.value.find { shopItem -> shopItem.name == itemName }
                     
                     // Update the state in the repository.
-                    // This will trigger the collector in onServiceConnected, which will call enforceShizukuBlocking.
                     ShopItemRepository.updateItemState(itemName, isStart)
                     
-                    // Force update cache immediately on the main thread (receiver runs on main)
-                    // (Optional, as collect will do it too, but this makes UI response faster for Toast)
+                    // Rebuild cache immediately for UI responsiveness
                     rebuildBlockedCache()
 
                     if (currentItem != null) {
@@ -69,27 +78,7 @@ class MyAccessibilityService : AccessibilityService() {
                     }
 
                     // Immediately re-check the current foreground app
-                    var currentPkg = lastForegroundPackage
-                    try {
-                        val root = rootInActiveWindow
-                        if (root != null) {
-                            root.packageName?.toString()?.let { pkg ->
-                                currentPkg = pkg
-                                lastForegroundPackage = pkg
-                            }
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-                                @Suppress("DEPRECATION")
-                                root.recycle()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("MyAccessibilityService", "Error retrieving root window", e)
-                    }
-
-                    if (currentPkg != null) {
-                        Log.d("MyAccessibilityService", "Re-checking rules for current package: $currentPkg")
-                        checkAndEnforceRules(currentPkg)
-                    }
+                    checkForegroundAndEnforce()
                 } else {
                      Log.w("MyAccessibilityService", "Received broadcast $action but could not extract item name.")
                 }
@@ -99,6 +88,7 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        ShopItemRepository.initialize(applicationContext)
         Log.d("MyAccessibilityService", "Service connected")
         
         val filter = IntentFilter().apply {
@@ -111,7 +101,7 @@ class MyAccessibilityService : AccessibilityService() {
 
         // Observe monitoring state
         serviceScope.launch {
-            ShopItemRepository.isMonitoringEnabled.collect { enabled ->
+            ShopItemRepository.isMonitoringEnabled.collectLatest { enabled ->
                 if (enabled) {
                     startForegroundService()
                 } else {
@@ -120,9 +110,9 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
         
-        // Observe item changes to keep blocked cache up to date and enforce Shizuku rules
-        serviceScope.launch(Dispatchers.Main) {
-            ShopItemRepository.items.collect {
+        // Observe item changes
+        serviceScope.launch {
+            ShopItemRepository.items.collectLatest {
                 rebuildBlockedCache()
                 enforceShizukuBlocking()
             }
@@ -130,10 +120,14 @@ class MyAccessibilityService : AccessibilityService() {
 
         val prefs = getSharedPreferences("app_picker_prefs", 0)
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
-        loadGroups(prefs)
+        
+        // Initial load
+        serviceScope.launch {
+            loadGroups(prefs)
+        }
     }
 
-    private fun loadGroups(prefs: SharedPreferences) {
+    private suspend fun loadGroups(prefs: SharedPreferences) = withContext(Dispatchers.IO) {
         val jsonString = prefs.getString("app_groups", "[]") ?: "[]"
         try {
             val jsonArray = JSONArray(jsonString)
@@ -157,52 +151,88 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
     
-    private fun enforceShizukuBlocking() {
-        // Capture current state safely
+    private suspend fun enforceShizukuBlocking() = withContext(Dispatchers.IO) {
         val items = ShopItemRepository.items.value
-        val currentGroups = groupsMap // Read only map reference
-
-        serviceScope.launch(Dispatchers.IO) {
-            val commands = StringBuilder()
-            
-            for (item in items) {
-                if (item.blockingTechnique == "DISABLE" && item.linkedGroupId != null) {
-                    val packages = currentGroups[item.linkedGroupId]
-                    if (packages != null) {
-                        for (pkg in packages) {
-                            val cmd = if (item.isActive) "pm enable $pkg" else "pm disable-user --user 0 $pkg"
-                            commands.append(cmd).append(";")
-                        }
-                    }
+        val currentGroups = groupsMap // Read volatile
+        
+        // Map package -> shouldEnable (true = enable, false = disable)
+        // Logic: If ANY item for a group is Active -> Enable.
+        //        Else if ANY item for a group is Inactive (and DISABLE technique) -> Disable.
+        val desiredStates = mutableMapOf<String, Boolean>()
+        
+        val managedPackages = mutableSetOf<String>()
+        val allowedGroups = mutableSetOf<String>()
+        
+        for (item in items) {
+            if (item.linkedGroupId != null) {
+                if (item.isActive) {
+                    allowedGroups.add(item.linkedGroupId)
+                }
+                if (item.blockingTechnique == "DISABLE") {
+                    currentGroups[item.linkedGroupId]?.let { managedPackages.addAll(it) }
                 }
             }
-            
-            if (commands.isNotEmpty()) {
-                Log.d("MyAccessibilityService", "Enforcing Shizuku state: $commands")
-                executeShizukuCommand(commands.toString())
+        }
+        
+        for (pkg in managedPackages) {
+            // Find which groups contain this package
+            val belongingGroups = currentGroups.filterValues { it.contains(pkg) }.keys
+            // If any of the belonging groups is allowed, then Enable.
+            val isAllowed = belongingGroups.any { allowedGroups.contains(it) }
+            desiredStates[pkg] = isAllowed
+        }
+
+        val commands = StringBuilder()
+        val updates = mutableMapOf<String, Boolean>()
+
+        for ((pkg, shouldEnable) in desiredStates) {
+            val lastState = lastAppliedPackageStates[pkg]
+            if (lastState != shouldEnable) {
+                val cmd = if (shouldEnable) "pm enable $pkg" else "pm disable-user --user 0 $pkg"
+                commands.append(cmd).append(";")
+                updates[pkg] = shouldEnable
             }
+        }
+        
+        if (commands.isNotEmpty()) {
+            Log.d("MyAccessibilityService", "Enforcing Shizuku state: $commands")
+            executeShizukuCommand(commands.toString())
+            lastAppliedPackageStates.putAll(updates)
         }
     }
 
-    /**
-     * Rebuilds the set of blocked packages based on current items and groups.
-     * Should be called on Main thread to avoid concurrency issues.
-     */
     private fun rebuildBlockedCache() {
         val items = ShopItemRepository.items.value
         val newCache = mutableMapOf<String, String?>()
+        val currentGroups = groupsMap
+
+        // 1. Identify all packages that should be allowed (whitelisted)
+        // These are packages belonging to groups linked to currently ACTIVE items.
+        // If a package is in an allowed group, it should NOT be blocked,
+        // even if it is also in a blocked group.
+        val allowedPackages = mutableSetOf<String>()
         
         for (item in items) {
-            // If item is stopped (!isActive) and has a linked group, it blocks those apps
-            // BUT ONLY if technique is HOME. If it's DISABLE, we don't enforce global home action.
+             if (item.isActive && item.linkedGroupId != null) {
+                 currentGroups[item.linkedGroupId]?.let {
+                     allowedPackages.addAll(it)
+                 }
+             }
+        }
+
+        // 2. Build the block cache
+        for (item in items) {
+            // If item is inactive (timer not running), it may block apps via "HOME" technique
             if (!item.isActive && item.linkedGroupId != null && item.blockingTechnique == "HOME") {
-                val allowedPackages = groupsMap[item.linkedGroupId]
-                if (allowedPackages != null) {
-                    for (pkg in allowedPackages) {
-                        // Avoid overwriting if a package is already blocked (first item priority)
-                        if (!newCache.containsKey(pkg)) {
-                            newCache[pkg] = item.forceQuitMessage
-                        }
+                val targetPackages = currentGroups[item.linkedGroupId]
+                if (targetPackages != null) {
+                    for (pkg in targetPackages) {
+                         // Only block if the package is NOT explicitly allowed by an active group
+                         if (!allowedPackages.contains(pkg)) {
+                             if (!newCache.containsKey(pkg)) {
+                                 newCache[pkg] = item.forceQuitMessage
+                             }
+                         }
                     }
                 }
             }
@@ -220,14 +250,37 @@ class MyAccessibilityService : AccessibilityService() {
             checkAndEnforceRules(packageName)
         }
     }
+    
+    private fun checkForegroundAndEnforce() {
+        var currentPkg = lastForegroundPackage
+        try {
+            val root = rootInActiveWindow
+            if (root != null) {
+                root.packageName?.toString()?.let { pkg ->
+                    currentPkg = pkg
+                    lastForegroundPackage = pkg
+                }
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                    @Suppress("DEPRECATION")
+                    root.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MyAccessibilityService", "Error retrieving root window", e)
+        }
+
+        if (currentPkg != null) {
+            checkAndEnforceRules(currentPkg)
+        }
+    }
 
     private fun checkAndEnforceRules(currentPackage: String) {
-        // Optimized O(1) lookup
-        if (blockedPackagesCache.containsKey(currentPackage)) {
+        val cache = blockedPackagesCache // Atomic read
+        if (cache.containsKey(currentPackage)) {
             Log.i("MyAccessibilityService", "Blocking $currentPackage")
             performGlobalAction(GLOBAL_ACTION_HOME)
             
-            val message = blockedPackagesCache[currentPackage]
+            val message = cache[currentPackage]
             if (!message.isNullOrBlank()) {
                  Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }

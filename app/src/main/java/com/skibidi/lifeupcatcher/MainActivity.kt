@@ -28,6 +28,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ShopItemRepository.initialize(applicationContext)
+
         val viewModel = ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory(application)).get(AppPickerViewModel::class.java)
 
         setContent {

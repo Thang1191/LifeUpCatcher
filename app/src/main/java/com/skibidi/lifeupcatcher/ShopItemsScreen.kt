@@ -471,7 +471,11 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = item.name, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = item.name, 
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.Black
+            )
             Text(
                 text = if (item.isActive) "Running" else "Stopped",
                 style = MaterialTheme.typography.bodySmall,
@@ -481,19 +485,19 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
             Text(
                 text = "Group: ${selectedGroup?.name ?: "None"}",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = Color.Black
             )
              Text(
                 text = "Type: ${if(item.blockingTechnique == "DISABLE") "Disable" else "Home Button"}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary
+                color = Color.Black
             )
         }
         IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = "Edit")
+            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.Black)
         }
         IconButton(onClick = { ShopItemRepository.removeItem(item.name) }) {
-            Icon(Icons.Default.Delete, contentDescription = "Remove")
+            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color.Black)
         }
     }
 }

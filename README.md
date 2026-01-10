@@ -1,79 +1,77 @@
-## ⚠️ WARNING: THIS APP IS ENTIRELY VIBE CODED. I MADE THEM FOR MY PERSONAL USE CASES. YOU CAN FILE BUG REPORTS AND FEATURE REQUESTS, BUT I WILL NOT READ THEM.
-
-
+# ⚠️ Disclaimer: THIS APP IS ENTIRELY VIBE CODED AND IS FOR MY PERSONAL USE. YOU CAN REPORT ISSUES OR REQUEST FEATURES BUT I'LL PROBABLY WON'T READ THEM.
 # LifeUpCatcher
 
-**LifeUpCatcher** is a powerful companion application for [LifeUp](https://play.google.com/store/apps/details?id=net.sarasarasa.lifeup), a gamified to-do list app. It acts as an **enforcement bridge**, allowing you to physically restrict access to distractions (apps/games) on your phone unless you have "purchased" time for them using your LifeUp coins.
+**LifeUpCatcher** is a companion app for [LifeUp](https://play.google.com/store/apps/details?id=net.sarasarasa.lifeup) that lets you use your hard-earned LifeUp coins to "buy" screen time for distracting apps and games.
 
-> **Concept**: Create a "Shop Item" in LifeUp (e.g., "1 Hour Gaming"). When you buy it, LifeUpCatcher unlocks your games. When the time expires, LifeUpCatcher immediately kicks you out of those games.
+It acts as a bridge between LifeUp and your device, allowing you to block or unblock apps based on items you purchase in the LifeUp shop.
+
+> **The Concept**: You create a "Shop Item" in LifeUp, for example, "1 Hour of Gaming". When you buy that item, LifeUpCatcher automatically unblocks your games. When the time is up, it locks them again.
 
 ## ✨ Features
 
-*   **Real-time Blocking**: Uses Android Accessibility Services to monitor the foreground app and block it instantly if unauthorized.
-*   **LifeUp Integration**: Listens for standard broadcasts sent by LifeUp when items are used or timers expire.
-*   **App Grouping**: Create custom groups of apps (e.g., "Social Media", "Games") to manage them easily.
-*   **High Performance**:
-    *   **O(1) Enforcement**: Uses optimized caching maps to check rules instantly without battery drain.
-    *   **Reactive Architecture**: Updates rules immediately when LifeUp sends a signal, kicking you out of a restricted app the millisecond the timer ends.
-*   **Customizable Messages**: Set custom Toast messages for start, stop, and force-quit events.
+*   **App Groups**: Bundle apps together (e.g., "Social Media", "Games") to control them all with a single LifeUp item.
+*   **Two Blocking Techniques**:
+    *   **Accessibility Service**: Instantly blocks apps by navigating to the home screen the moment your purchased time runs out.
+    *   **Shizuku/Root Integration**: For more powerful control, completely disable apps, preventing them from being opened at all.
+*   **Seamless LifeUp Integration**: Listens for signals from LifeUp to automatically start or stop access to your apps.
+*   **Custom Toast Messages**: Set your own custom alert messages for when app time starts, stops, or when an app is blocked.
+*   **Efficient & Battery-Friendly**: Designed to be fast and consume minimal battery (maybe).
 
 ## 🚀 How It Works
 
-1.  **LifeUp Trigger**: You use an item in LifeUp. LifeUp sends a system broadcast (intent).
-2.  **Reception**: LifeUpCatcher's `MyAccessibilityService` receives this broadcast.
-3.  **State Update**: The service updates the state of the item (Active/Inactive) and immediately rebuilds its enforcement cache.
-4.  **Enforcement**:
-    *   The service checks the currently active window.
-    *   If you are currently in an app that is now restricted (because the timer stopped), it performs a **Global Home Action**, forcing you to the home screen.
-    *   If you try to open the app again, it checks the package name against the blocked cache and kicks you out again.
+1.  **Purchase an Item in LifeUp**: When you use a connected shop item in LifeUp, it sends a signal (broadcast).
+2.  **LifeUpCatcher Responds**: The app's monitoring service catches this signal and activates the rules for that item.
+3.  **Access Granted**: The apps in the linked group are now unblocked.
+4.  **Time's Up!**: When the timer on your LifeUp item expires, the apps are instantly blocked again using your chosen method.
 
-## 🛠️ Technical Architecture
+## 🛠️ Setup Guide
 
-The project follows modern Android development practices using **Kotlin**, **Jetpack Compose**, and **Coroutines**.
+### 1. Build and Install
+Build the project in Android Studio and install the APK on your phone.
 
-### Core Components
+### 2. Grant Core Permissions
+*   Open LifeUpCatcher and go to the **Activity** tab.
+*   You will be prompted to enable the **Accessibility Service**. This is required for the basic blocking feature.
+*   Toggle the **Monitoring Service** switch to "ON".
+*   You will be asked for **Notification** permission. This is necessary to keep the service running in the background.
+*   You may also be asked to **disable battery optimizations**. This is crucial to prevent the OS from shutting down the monitoring service.
 
-*   **`ShopItemRepository`**: A singleton repository holding the state of all shop items. It uses `StateFlow` to provide reactive updates to the UI and the Background Service.
-*   **`MyAccessibilityService`**: The heart of the application.
-    *   **Service Type**: `foregroundServiceType="specialUse"` (Android 14+ compliant).
-    *   **Optimization**: Maintains a `blockedPackagesCache` (Map<PackageName, Message>) to avoid iterating through lists or reading files during high-frequency window state changes.
-    *   **Immediate Reaction**: Uses `rootInActiveWindow` to enforce rules immediately upon receiving a broadcast, rather than waiting for the next user interaction.
-*   **`AppPickerViewModel`**: Manages the UI for selecting installed applications using `PackageManager`.
+### 3. Create an App Group
+*   Go to the **Apps** tab.
+*   Tap the **+** button to create a new group (e.g., "Distracting Apps").
+*   Select all the apps you want to include in this group and save it.
 
-### Broadcast Integration
+### 4. Link a LifeUp Shop Item
+*   Go back to the **Activity** tab.
+*   Tap the **+** button to add a new monitored item.
+*   **Item Name**: Enter a name that is **exactly the same** as the item you will create in LifeUp.
+*   **Group**: Select the App Group you created in the previous step.
+*   **Blocking Technique**:
+    *   `Global Action Home` is the standard method and works for most cases.
+    *   `Disable Apps` is a more powerful option but requires Shizuku or Root access (see Step 5).
+*   **Toast Messages (Optional)**: You can set custom messages that will appear when the item is used, when it expires, or when an app is blocked.
+*   Save the item.
 
-The app listens for the following actions:
-*   `app.lifeup.item.countdown.start`: Item purchased/started.
-*   `app.lifeup.item.countdown.stop`: Item manually stopped.
-*   `app.lifeup.item.countdown.complete`: Timer finished naturally.
+### 5. (Optional) Configure Shizuku
+For the `Disable Apps` blocking technique, you need to grant permissions via Shizuku.
 
-## 📦 Installation & Setup
+*   [Install and run Shizuku](https://shizuku.rikka.app/guide/setup/) on your device.
+*   In LifeUpCatcher, go to the **Activity** tab.
+*   Enable the **Shizuku Integration** switch.
+*   Grant permission to LifeUpCatcher when prompted by Shizuku.
+*   You can now select the `Disable Apps` technique when creating or editing a monitored item.
 
-Since this app requires deep system integration (`QUERY_ALL_PACKAGES` and Accessibility), it is designed to be sideloaded.
+### 6. Configure LifeUp
+*   Open LifeUp and go to the **Shop**.
+*   Create a new shop item. Give it the **exact same name** as you did in LifeUpCatcher.
+*   Under "Effects", choose **Custom Effects** -> **Countdown Timer**.
+*   Make sure to enable **Broadcast events** in **Settings** -> **Labs** -> **Developer Mode**.
 
-1.  **Install the APK** on your device (build it yourself).
-2.  **Open LifeUpCatcher**.
-3.  **Grant Permissions**:
-    *   Allow **Notification** permission (for the foreground service).
-    *   Enable **Accessibility Service** in Android Settings when prompted.
-4.  **Configuration**:
-    *   **Create a Group**: Go to the "Apps" tab, create a group (e.g., "Distractions"), and select the apps you want to block.
-    *   **Create an Item**: Go to the "Activity" tab, add a new item. **The name must match your LifeUp Shop Item exactly.**
-    *   **Link**: Link the Item to the App Group.
-5.  **Enable Monitoring**: Toggle the switch at the top to "ON".
+Now, whenever you buy your item in LifeUp, your selected apps will be unblocked for the duration of the countdown!
 
-## 🎮 LifeUp Configuration
+## 📝 Why These Permissions?
 
-1.  Open **LifeUp**.
-2.  Go to **Shop** -> Add Item.
-3.  Set **Effects** -> **Process** -> **Broadcast**.
-    *   Ensure the item name matches what you entered in LifeUpCatcher.
-4.  (Optional) Set a **Countdown** (e.g., 30 minutes).
-5.  **Enjoy!** Buying the item unlocks the apps. When the countdown ends, they are locked again.
-
-## 📝 Permissions
-
-*   `BIND_ACCESSIBILITY_SERVICE`: To detect the current app and perform the "Home" action.
-*   `QUERY_ALL_PACKAGES`: To list installed apps for grouping.
-*   `FOREGROUND_SERVICE`: To keep the enforcement active in the background.
-*   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To prevent the system from killing the enforcement service.
+*   `BIND_ACCESSIBILITY_SERVICE`: To see the currently running app and return to the home screen to block access.
+*   `QUERY_ALL_PACKAGES`: To show you a list of all your installed apps so you can choose which ones to block.
+*   `POST_NOTIFICATIONS`: To show a persistent notification, which is required by Android to keep the background monitoring service alive.
+*   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To ensure the operating system doesn't shut down the service to save battery.
