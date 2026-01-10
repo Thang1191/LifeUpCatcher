@@ -2,6 +2,7 @@ package com.skibidi.lifeupcatcher
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -34,6 +35,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +46,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,7 +76,9 @@ import java.util.UUID
 data class AppInfo(
     val packageName: String,
     val label: String,
-    val icon: Bitmap?
+    val icon: Bitmap?,
+    val isSystemApp: Boolean,
+    val isEnabled: Boolean
 )
 
 data class AppGroup(
@@ -104,15 +110,15 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
                 @Suppress("DEPRECATION")
                 pm.getInstalledPackages(PackageManager.GET_META_DATA)
             }
-            
+
             val appList = packages.mapNotNull { packInfo ->
-                val intent = pm.getLaunchIntentForPackage(packInfo.packageName)
                 val appInfo = packInfo.applicationInfo
-                if (intent != null && appInfo != null) {
+                if (appInfo != null) {
                     val label = appInfo.loadLabel(pm).toString()
                     val iconDrawable = appInfo.loadIcon(pm)
                     val iconBitmap = drawableToBitmap(iconDrawable)
-                    AppInfo(packInfo.packageName, label, iconBitmap)
+                    val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    AppInfo(packInfo.packageName, label, iconBitmap, isSystemApp, appInfo.enabled)
                 } else {
                     null
                 }
@@ -161,7 +167,7 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
             persistGroups(currentGroups)
         }
     }
-    
+
     fun deleteGroup(groupId: String) {
         val currentGroups = _groups.value.filter { it.id != groupId }
         _groups.value = currentGroups
@@ -235,8 +241,8 @@ fun AppPickerScreen(viewModel: AppPickerViewModel) {
                 )
             } else {
                 GroupListScreen(
-                    groups = groups, 
-                    allApps = apps, 
+                    groups = groups,
+                    allApps = apps,
                     onDelete = { viewModel.deleteGroup(it) },
                     onEdit = { editingGroup = it }
                 )
@@ -247,8 +253,8 @@ fun AppPickerScreen(viewModel: AppPickerViewModel) {
 
 @Composable
 fun GroupListScreen(
-    groups: List<AppGroup>, 
-    allApps: List<AppInfo>, 
+    groups: List<AppGroup>,
+    allApps: List<AppInfo>,
     onDelete: (String) -> Unit,
     onEdit: (AppGroup) -> Unit
 ) {
@@ -265,13 +271,13 @@ fun GroupListScreen(
 
 @Composable
 fun GroupItem(
-    group: AppGroup, 
-    allApps: List<AppInfo>, 
+    group: AppGroup,
+    allApps: List<AppInfo>,
     onDelete: (String) -> Unit,
     onEdit: (AppGroup) -> Unit
 ) {
     val appMap = remember(allApps) { allApps.associateBy { it.packageName } }
-    
+
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         modifier = Modifier.fillMaxWidth()
@@ -291,7 +297,7 @@ fun GroupItem(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             val scrollState = rememberScrollState()
             Row(
                 modifier = Modifier
@@ -326,6 +332,7 @@ fun GroupItem(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupScreen(
     allApps: List<AppInfo>,
@@ -336,6 +343,20 @@ fun CreateGroupScreen(
 ) {
     var groupName by remember { mutableStateOf(initialName) }
     var selectedPackages by remember { mutableStateOf(initialSelection) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showSystemApps by remember { mutableStateOf(false) }
+    var showDisabledApps by remember { mutableStateOf(false) }
+
+    val filteredApps by remember(searchQuery, showSystemApps, showDisabledApps, allApps) {
+        derivedStateOf {
+            allApps.filter { app ->
+                val matchesSearch = searchQuery.isBlank() || app.label.contains(searchQuery, ignoreCase = true)
+                val matchesSystem = showSystemApps || !app.isSystemApp
+                val matchesEnabled = showDisabledApps || app.isEnabled
+                matchesSearch && matchesSystem && matchesEnabled
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -360,7 +381,7 @@ fun CreateGroupScreen(
                 Icon(Icons.Default.Check, contentDescription = "Save")
             }
         }
-        
+
         OutlinedTextField(
             value = groupName,
             onValueChange = { groupName = it },
@@ -369,11 +390,33 @@ fun CreateGroupScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search Apps") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        )
+
+        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = showSystemApps,
+                onClick = { showSystemApps = !showSystemApps },
+                label = { Text("System Apps") }
+            )
+            FilterChip(
+                selected = showDisabledApps,
+                onClick = { showDisabledApps = !showDisabledApps },
+                label = { Text("Disabled Apps") }
+            )
+        }
+
         LazyColumn(modifier = Modifier.weight(1f)) {
-            items(allApps) { app ->
+            items(filteredApps) { app ->
                 AppItem(
                     app = app,
                     isSelected = selectedPackages.contains(app.packageName),

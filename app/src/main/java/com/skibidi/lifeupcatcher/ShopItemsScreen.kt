@@ -75,7 +75,6 @@ fun ShopItemsScreen() {
     )
     val groups by appPickerViewModel.groups.collectAsState()
 
-    // Using .value directly to avoid lint warnings about unused values
     val showAddDialog = remember { mutableStateOf(false) }
     val editingItem = remember { mutableStateOf<ShopItemState?>(null) }
     var shizukuAvailable by remember { mutableStateOf(false) }
@@ -105,7 +104,6 @@ fun ShopItemsScreen() {
         Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
         Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
         
-        // Initial check
         shizukuAvailable = Shizuku.pingBinder()
 
         onDispose {
@@ -135,7 +133,6 @@ fun ShopItemsScreen() {
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Monitoring Toggle Card
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -184,7 +181,6 @@ fun ShopItemsScreen() {
                 }
             }
 
-            // Shizuku Integration Card
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -215,7 +211,6 @@ fun ShopItemsScreen() {
                         onCheckedChange = { enabled ->
                              if (enabled) {
                                 try {
-                                    // Use the reactive state or dynamic check
                                     if (shizukuAvailable || Shizuku.pingBinder()) {
                                         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
                                             ShopItemRepository.setShizukuEnabled(true)
@@ -296,6 +291,10 @@ fun ItemDialog(
     var groupExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    if (blockingTechnique == "WORK_PROFILE") {
+        selectedGroup = null
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (item == null) "Add Shop Item" else "Edit Shop Item") },
@@ -303,27 +302,32 @@ fun ItemDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { if (item == null) name = it }, // Only editable if adding
+                    onValueChange = { if (item == null) name = it },
                     label = { Text("Item Name") },
                     readOnly = item != null,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                val isGroupSelectionEnabled = blockingTechnique != "WORK_PROFILE"
+
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
-                        value = selectedGroup?.name ?: "None",
+                        value = if (isGroupSelectionEnabled) selectedGroup?.name ?: "None" else "(Not applicable)",
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Group") },
                         trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Group") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = isGroupSelectionEnabled
                     )
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .clickable { groupExpanded = true }
-                    )
+                    if (isGroupSelectionEnabled) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { groupExpanded = true }
+                        )
+                    }
                     DropdownMenu(
                         expanded = groupExpanded, 
                         onDismissRequest = { groupExpanded = false },
@@ -402,6 +406,43 @@ fun ItemDialog(
                         )
                     }
                 }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = isShizukuEnabled) {
+                            if (isShizukuEnabled) {
+                                blockingTechnique = "WORK_PROFILE"
+                            } else {
+                                Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    RadioButton(
+                        selected = blockingTechnique == "WORK_PROFILE",
+                        onClick = {
+                            if (isShizukuEnabled) {
+                                blockingTechnique = "WORK_PROFILE"
+                            } else {
+                                Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = isShizukuEnabled
+                    )
+                    Column {
+                        Text(
+                            text = "Toggle Work Profile",
+                            modifier = Modifier.padding(start = 8.dp),
+                            color = if (isShizukuEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        Text(
+                            text = "(Requires Shizuku/Root)",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Toast Messages (Optional)", style = MaterialTheme.typography.titleSmall)
@@ -436,7 +477,7 @@ fun ItemDialog(
                 onClick = { 
                     onConfirm(
                         name, 
-                        selectedGroup?.id,
+                        selectedGroup?.id.takeIf { blockingTechnique != "WORK_PROFILE" },
                         startMsg.takeIf { it.isNotBlank() },
                         stopMsg.takeIf { it.isNotBlank() },
                         quitMsg.takeIf { it.isNotBlank() },
@@ -455,6 +496,7 @@ fun ItemDialog(
         }
     )
 }
+
 
 @Composable
 fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit) {
@@ -482,13 +524,15 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
                 color = if (item.isActive) Color(0xFF2E7D32) else Color(0xFFC62828)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Group: ${selectedGroup?.name ?: "None"}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.Black
-            )
+            if (item.blockingTechnique != "WORK_PROFILE") {
+                Text(
+                    text = "Group: ${selectedGroup?.name ?: "None"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Black
+                )
+            }
              Text(
-                text = "Type: ${if(item.blockingTechnique == "DISABLE") "Disable" else "Home Button"}",
+                text = "Type: ${item.blockingTechnique.replace("_", " ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Black
             )

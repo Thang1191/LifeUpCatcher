@@ -2,6 +2,7 @@ package com.skibidi.lifeupcatcher
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,7 @@ data class ShopItemState(
     val startMessage: String? = null,
     val stopMessage: String? = null,
     val forceQuitMessage: String? = null,
-    val blockingTechnique: String = "HOME" // "HOME" or "DISABLE"
+    val blockingTechnique: String = "HOME" // "HOME", "DISABLE", or "WORK_PROFILE"
 )
 
 object ShopItemRepository {
@@ -29,11 +30,15 @@ object ShopItemRepository {
     private val _isShizukuEnabled = MutableStateFlow(false)
     val isShizukuEnabled: StateFlow<Boolean> = _isShizukuEnabled.asStateFlow()
 
+    private val _isDebuggingEnabled = MutableStateFlow(false)
+    val isDebuggingEnabled: StateFlow<Boolean> = _isDebuggingEnabled.asStateFlow()
+
     private var applicationContext: Context? = null
     private const val PREFS_NAME = "lifeup_catcher_prefs"
     private const val KEY_ITEMS = "shop_items"
     private const val KEY_MONITORING = "monitoring_enabled"
     private const val KEY_SHIZUKU = "shizuku_enabled"
+    private const val KEY_DEBUGGING = "debugging_enabled"
 
     fun initialize(context: Context) {
         if (applicationContext != null) return // Already initialized
@@ -47,6 +52,7 @@ object ShopItemRepository {
 
         _isMonitoringEnabled.value = prefs.getBoolean(KEY_MONITORING, false)
         _isShizukuEnabled.value = prefs.getBoolean(KEY_SHIZUKU, false)
+        _isDebuggingEnabled.value = prefs.getBoolean(KEY_DEBUGGING, false)
 
         val itemsJson = prefs.getString(KEY_ITEMS, null)
         if (itemsJson != null) {
@@ -63,15 +69,14 @@ object ShopItemRepository {
     private fun save() {
         val context = applicationContext ?: return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
+        prefs.edit {
+            putBoolean(KEY_MONITORING, _isMonitoringEnabled.value)
+            putBoolean(KEY_SHIZUKU, _isShizukuEnabled.value)
+            putBoolean(KEY_DEBUGGING, _isDebuggingEnabled.value)
 
-        editor.putBoolean(KEY_MONITORING, _isMonitoringEnabled.value)
-        editor.putBoolean(KEY_SHIZUKU, _isShizukuEnabled.value)
-
-        val itemsJson = Gson().toJson(_items.value)
-        editor.putString(KEY_ITEMS, itemsJson)
-
-        editor.apply()
+            val itemsJson = Gson().toJson(_items.value)
+            putString(KEY_ITEMS, itemsJson)
+        }
     }
 
     fun setMonitoringEnabled(enabled: Boolean) {
@@ -81,6 +86,11 @@ object ShopItemRepository {
 
     fun setShizukuEnabled(enabled: Boolean) {
         _isShizukuEnabled.value = enabled
+        save()
+    }
+
+    fun setDebuggingEnabled(enabled: Boolean) {
+        _isDebuggingEnabled.value = enabled
         save()
     }
 
@@ -120,21 +130,8 @@ object ShopItemRepository {
         _items.update { list ->
             list.map { item ->
                 if (item.name == name) {
-                    Log.d("ShopItemRepository", "Updating item '$name' state to: $isActive")
+                    Log.d("ShopItemRepository", "Updating item '''$name''' state to: $isActive")
                     item.copy(isActive = isActive)
-                } else {
-                    item
-                }
-            }
-        }
-        save()
-    }
-
-    fun updateItemLinkedGroup(name: String, groupId: String?) {
-        _items.update { list ->
-            list.map { item ->
-                if (item.name == name) {
-                    item.copy(linkedGroupId = groupId)
                 } else {
                     item
                 }

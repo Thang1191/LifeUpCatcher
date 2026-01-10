@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         ShopItemRepository.initialize(applicationContext)
 
-        val viewModel = ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory(application)).get(AppPickerViewModel::class.java)
+        val viewModel = ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory(application))[AppPickerViewModel::class.java]
 
         setContent {
             LifeUpCatcherTheme {
@@ -60,6 +61,12 @@ fun MainScreen(viewModel: AppPickerViewModel) {
                     icon = { Icon(Icons.Default.Info, contentDescription = "Activity") },
                     label = { Text("Activity") }
                 )
+                NavigationBarItem(
+                    selected = selectedIndex == 2,
+                    onClick = { selectedIndex = 2 },
+                    icon = { Icon(Icons.Default.Build, contentDescription = "Debug") },
+                    label = { Text("Debug") }
+                )
             }
         }
     ) { innerPadding ->
@@ -67,6 +74,7 @@ fun MainScreen(viewModel: AppPickerViewModel) {
             when (selectedIndex) {
                 0 -> AppPickerScreen(viewModel = viewModel)
                 1 -> ActivityScreen()
+                2 -> DebugScreen()
             }
         }
     }

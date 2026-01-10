@@ -10,9 +10,10 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
 ## ✨ Features
 
 *   **App Groups**: Bundle apps together (e.g., "Social Media", "Games") to control them all with a single LifeUp item.
-*   **Two Blocking Techniques**:
+*   **Three Blocking Techniques**:
     *   **Accessibility Service**: Instantly blocks apps by navigating to the home screen the moment your purchased time runs out.
     *   **Shizuku/Root Integration**: For more powerful control, completely disable apps, preventing them from being opened at all.
+    *   **Work Profile**: Toggle your entire work profile on or off.
 *   **Seamless LifeUp Integration**: Listens for signals from LifeUp to automatically start or stop access to your apps.
 *   **Custom Toast Messages**: Set your own custom alert messages for when app time starts, stops, or when an app is blocked.
 *   **Efficient & Battery-Friendly**: Designed to be fast and consume minimal battery (maybe).
@@ -49,11 +50,12 @@ Download the APK from releases and install it on your phone.
 *   **Blocking Technique**:
     *   `Global Action Home` is the standard method and works for most cases.
     *   `Disable Apps` is a more powerful option but requires Shizuku or Root access (see Step 5).
+    *   `Work Profile` will toggle your work profile on and off (see step 6)
 *   **Toast Messages (Optional)**: You can set custom messages that will appear when the item is used, when it expires, or when an app is blocked.
 *   Save the item.
 
 ### 5. (Optional) Configure Shizuku
-For the `Disable Apps` blocking technique, you need to grant permissions via Shizuku.
+For the `Disable Apps` and `Work Profile` blocking technique, you need to grant permissions via Shizuku.
 
 *   [Install and run Shizuku](https://shizuku.rikka.app/guide/setup/) on your device.
 *   In LifeUpCatcher, go to the **Activity** tab.
@@ -61,7 +63,23 @@ For the `Disable Apps` blocking technique, you need to grant permissions via Shi
 *   Grant permission to LifeUpCatcher when prompted by Shizuku.
 *   You can now select the `Disable Apps` technique when creating or editing a monitored item.
 
-### 6. Configure LifeUp
+### 6. (Optional) Configure Work Profile
+You can use LifeUpCatcher to turn your work profile on or off. This is useful if you use a work profile to isolate distracting apps.
+
+*   **Setup a work profile**. A popular app for this is [Island](https://play.google.com/store/apps/details?id=com.oasisfeng.island). You can also use other methods to create a work profile.
+*   **Install distracting apps in your work profile.**
+*   In LifeUpCatcher, create a new monitored item and select `Work Profile` as the blocking technique.
+*   Now, when you use the linked item in LifeUp, your work profile will be turned on. When the time is up, it will be turned off.
+
+#### Setting up Island
+1.  Install [Island](https://play.google.com/store/apps/details?id=com.oasisfeng.island) from the Play Store.
+2.  Open Island and follow the instructions to set up your work profile.
+3.  In Island, go to the "Mainland" tab and select the apps you want to control.
+4.  Tap the clone button to create a copy of the app in your work profile.
+5.  Install LifeUpCatcher in your **main profile**, not your work profile.
+6.  You're all set! Now you can use the `Work Profile` blocking technique in LifeUpCatcher.
+
+### 7. Configure LifeUp
 *   Open LifeUp and go to the **Shop**.
 *   Create a new shop item. Give it the **exact same name** as you did in LifeUpCatcher.
 *   Under "Effects", choose **Custom Effects** -> **Countdown Timer**.
@@ -75,3 +93,4 @@ Now, whenever you buy your item in LifeUp, your selected apps will be unblocked 
 *   `QUERY_ALL_PACKAGES`: To show you a list of all your installed apps so you can choose which ones to block.
 *   `POST_NOTIFICATIONS`: To show a persistent notification, which is required by Android to keep the background monitoring service alive.
 *   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To ensure the operating system doesn't shut down the service to save battery.
+*   `MODIFY_QUIET_MODE`: To turn the work profile on and off.
