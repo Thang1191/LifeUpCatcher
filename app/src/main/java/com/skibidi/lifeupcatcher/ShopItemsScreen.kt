@@ -1,10 +1,10 @@
 package com.skibidi.lifeupcatcher
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import rikka.shizuku.Shizuku
 
@@ -74,8 +75,9 @@ fun ShopItemsScreen() {
     )
     val groups by appPickerViewModel.groups.collectAsState()
 
-    var showAddDialog by remember { mutableStateOf(false) }
-    var editingItem by remember { mutableStateOf<ShopItemState?>(null) }
+    // Using .value directly to avoid lint warnings about unused values
+    val showAddDialog = remember { mutableStateOf(false) }
+    val editingItem = remember { mutableStateOf<ShopItemState?>(null) }
     var shizukuAvailable by remember { mutableStateOf(false) }
 
     val shizukuPermissionListener = remember {
@@ -115,19 +117,14 @@ fun ShopItemsScreen() {
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-             ShopItemRepository.setMonitoringEnabled(true)
-             requestBackgroundPermission(context)
-        } else {
-             ShopItemRepository.setMonitoringEnabled(true)
-             requestBackgroundPermission(context)
-        }
+    ) { _ ->
+        ShopItemRepository.setMonitoringEnabled(true)
+        requestBackgroundPermission(context)
     }
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(onClick = { showAddDialog.value = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Add Item")
             }
         }
@@ -246,36 +243,36 @@ fun ShopItemsScreen() {
                     ShopItemRow(
                         item = item, 
                         groups = groups,
-                        onEdit = { editingItem = item }
+                        onEdit = { editingItem.value = item }
                     )
                 }
             }
         }
     }
 
-    if (showAddDialog) {
+    if (showAddDialog.value) {
         ItemDialog(
             groups = groups,
             isShizukuEnabled = isShizukuEnabled,
-            onDismiss = { showAddDialog = false },
+            onDismiss = { showAddDialog.value = false },
             onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
                 if (name.isNotBlank()) {
                     ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique)
                 }
-                showAddDialog = false
+                showAddDialog.value = false
             }
         )
     }
 
-    if (editingItem != null) {
+    if (editingItem.value != null) {
         ItemDialog(
             groups = groups,
-            item = editingItem,
+            item = editingItem.value,
             isShizukuEnabled = isShizukuEnabled,
-            onDismiss = { editingItem = null },
+            onDismiss = { editingItem.value = null },
             onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
                 ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique)
-                editingItem = null
+                editingItem.value = null
             }
         )
     }
@@ -501,13 +498,14 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
     }
 }
 
+@SuppressLint("BatteryLife")
 private fun requestBackgroundPermission(context: Context) {
     val intent = Intent()
     val packageName = context.packageName
     val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
     if (!pm.isIgnoringBatteryOptimizations(packageName)) {
         intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-        intent.data = Uri.parse("package:$packageName")
+        intent.data = "package:$packageName".toUri()
         context.startActivity(intent)
     }
 }

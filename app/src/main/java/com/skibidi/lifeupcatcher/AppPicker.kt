@@ -1,20 +1,20 @@
 package com.skibidi.lifeupcatcher
 
 import android.app.Application
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,9 +53,12 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +88,7 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
     private val _groups = MutableStateFlow<List<AppGroup>>(emptyList())
     val groups: StateFlow<List<AppGroup>> = _groups
 
-    private val prefs = application.getSharedPreferences("app_picker_prefs", 0)
+    private val prefs = application.getSharedPreferences("app_picker_prefs", Context.MODE_PRIVATE)
 
     init {
         loadApps()
@@ -95,7 +98,13 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
     private fun loadApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = getApplication<Application>().packageManager
-            val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+            val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledPackages(PackageManager.GET_META_DATA)
+            }
+            
             val appList = packages.mapNotNull { packInfo ->
                 val intent = pm.getLaunchIntentForPackage(packInfo.packageName)
                 val appInfo = packInfo.applicationInfo
@@ -170,7 +179,7 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
             obj.put("packages", packagesArray)
             jsonArray.put(obj)
         }
-        prefs.edit().putString("app_groups", jsonArray.toString()).apply()
+        prefs.edit { putString("app_groups", jsonArray.toString()) }
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
@@ -179,7 +188,7 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
         }
         val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 1
         val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 1
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)
@@ -245,7 +254,7 @@ fun GroupListScreen(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         items(groups) { group ->
@@ -288,7 +297,7 @@ fun GroupItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(scrollState)
-                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
                         drawContent()
                         drawRect(

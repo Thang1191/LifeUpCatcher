@@ -1,6 +1,7 @@
 package com.skibidi.lifeupcatcher
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -23,8 +24,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import rikka.shizuku.Shizuku
-import rikka.shizuku.ShizukuRemoteProcess
 
+@SuppressLint("AccessibilityService")
 class MyAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
