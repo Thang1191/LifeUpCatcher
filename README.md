@@ -26,8 +26,8 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
 
 ## 🛠️ Setup Guide
 
-### 1. Build and Install
-Build the project in Android Studio and install the APK on your phone.
+### 1. Install
+Download the APK from releases and install it on your phone.
 
 ### 2. Grant Core Permissions
 *   Open LifeUpCatcher and go to the **Activity** tab.
