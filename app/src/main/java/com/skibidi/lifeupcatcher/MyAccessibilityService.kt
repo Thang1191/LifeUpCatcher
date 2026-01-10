@@ -22,6 +22,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import rikka.shizuku.Shizuku
+import rikka.shizuku.ShizukuRemoteProcess
 
 class MyAccessibilityService : AccessibilityService() {
 
@@ -49,9 +51,13 @@ class MyAccessibilityService : AccessibilityService() {
                     Log.d("MyAccessibilityService", "Received broadcast: $action for item: $itemName")
                     
                     val currentItem = ShopItemRepository.items.value.find { shopItem -> shopItem.name == itemName }
+                    
+                    // Update the state in the repository.
+                    // This will trigger the collector in onServiceConnected, which will call enforceShizukuBlocking.
                     ShopItemRepository.updateItemState(itemName, isStart)
                     
                     // Force update cache immediately on the main thread (receiver runs on main)
+                    // (Optional, as collect will do it too, but this makes UI response faster for Toast)
                     rebuildBlockedCache()
 
                     if (currentItem != null) {
@@ -62,7 +68,6 @@ class MyAccessibilityService : AccessibilityService() {
                     }
 
                     // Immediately re-check the current foreground app
-                    // Try to get the real active window first, fallback to cached last package
                     var currentPkg = lastForegroundPackage
                     try {
                         val root = rootInActiveWindow
@@ -114,11 +119,11 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
         
-        // Observe item changes to keep blocked cache up to date
-        // Use Main dispatcher to ensure thread safety with the cache maps used in onAccessibilityEvent
+        // Observe item changes to keep blocked cache up to date and enforce Shizuku rules
         serviceScope.launch(Dispatchers.Main) {
             ShopItemRepository.items.collect {
                 rebuildBlockedCache()
+                enforceShizukuBlocking()
             }
         }
 
@@ -145,11 +150,39 @@ class MyAccessibilityService : AccessibilityService() {
             groupsMap = newMap
             Log.d("MyAccessibilityService", "Loaded groups: $groupsMap")
             rebuildBlockedCache()
+            enforceShizukuBlocking()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
     
+    private fun enforceShizukuBlocking() {
+        // Capture current state safely
+        val items = ShopItemRepository.items.value
+        val currentGroups = groupsMap // Read only map reference
+
+        serviceScope.launch(Dispatchers.IO) {
+            val commands = StringBuilder()
+            
+            for (item in items) {
+                if (item.blockingTechnique == "DISABLE" && item.linkedGroupId != null) {
+                    val packages = currentGroups[item.linkedGroupId]
+                    if (packages != null) {
+                        for (pkg in packages) {
+                            val cmd = if (item.isActive) "pm enable $pkg" else "pm disable-user --user 0 $pkg"
+                            commands.append(cmd).append(";")
+                        }
+                    }
+                }
+            }
+            
+            if (commands.isNotEmpty()) {
+                Log.d("MyAccessibilityService", "Enforcing Shizuku state: $commands")
+                executeShizukuCommand(commands.toString())
+            }
+        }
+    }
+
     /**
      * Rebuilds the set of blocked packages based on current items and groups.
      * Should be called on Main thread to avoid concurrency issues.
@@ -160,7 +193,8 @@ class MyAccessibilityService : AccessibilityService() {
         
         for (item in items) {
             // If item is stopped (!isActive) and has a linked group, it blocks those apps
-            if (!item.isActive && item.linkedGroupId != null) {
+            // BUT ONLY if technique is HOME. If it's DISABLE, we don't enforce global home action.
+            if (!item.isActive && item.linkedGroupId != null && item.blockingTechnique == "HOME") {
                 val allowedPackages = groupsMap[item.linkedGroupId]
                 if (allowedPackages != null) {
                     for (pkg in allowedPackages) {
@@ -196,6 +230,32 @@ class MyAccessibilityService : AccessibilityService() {
             if (!message.isNullOrBlank()) {
                  Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+    
+    private fun executeShizukuCommand(command: String) {
+        try {
+            if (Shizuku.pingBinder()) {
+                // Use reflection because Shizuku.newProcess is private in newer versions
+                val newProcessMethod = Shizuku::class.java.getDeclaredMethod(
+                    "newProcess", 
+                    Array<String>::class.java, 
+                    Array<String>::class.java, 
+                    String::class.java
+                )
+                newProcessMethod.isAccessible = true
+                val process = newProcessMethod.invoke(
+                    null, 
+                    arrayOf("sh", "-c", command), 
+                    null, 
+                    null
+                ) as Process
+                process.waitFor()
+            } else {
+                 Log.e("MyAccessibilityService", "Shizuku is not available.")
+            }
+        } catch (e: Exception) {
+            Log.e("MyAccessibilityService", "Failed to execute Shizuku command: $command", e)
         }
     }
 

@@ -12,7 +12,8 @@ data class ShopItemState(
     val linkedGroupId: String? = null,
     val startMessage: String? = null,
     val stopMessage: String? = null,
-    val forceQuitMessage: String? = null
+    val forceQuitMessage: String? = null,
+    val blockingTechnique: String = "HOME" // "HOME" or "DISABLE"
 )
 
 object ShopItemRepository {
@@ -22,18 +23,25 @@ object ShopItemRepository {
     private val _isMonitoringEnabled = MutableStateFlow(false)
     val isMonitoringEnabled: StateFlow<Boolean> = _isMonitoringEnabled.asStateFlow()
 
+    private val _isShizukuEnabled = MutableStateFlow(false)
+    val isShizukuEnabled: StateFlow<Boolean> = _isShizukuEnabled.asStateFlow()
+
     fun setMonitoringEnabled(enabled: Boolean) {
         _isMonitoringEnabled.value = enabled
     }
 
-    fun addItem(name: String, linkedGroupId: String? = null, startMsg: String? = null, stopMsg: String? = null, forceQuitMsg: String? = null) {
+    fun setShizukuEnabled(enabled: Boolean) {
+        _isShizukuEnabled.value = enabled
+    }
+
+    fun addItem(name: String, linkedGroupId: String? = null, startMsg: String? = null, stopMsg: String? = null, forceQuitMsg: String? = null, blockingTechnique: String = "HOME") {
         if (_items.value.none { it.name == name }) {
-            _items.update { it + ShopItemState(name, false, linkedGroupId, startMsg, stopMsg, forceQuitMsg) }
+            _items.update { it + ShopItemState(name, false, linkedGroupId, startMsg, stopMsg, forceQuitMsg, blockingTechnique) }
             Log.d("ShopItemRepository", "Added receiver for item: $name")
         }
     }
 
-    fun updateItem(name: String, linkedGroupId: String?, startMsg: String?, stopMsg: String?, forceQuitMsg: String?) {
+    fun updateItem(name: String, linkedGroupId: String?, startMsg: String?, stopMsg: String?, forceQuitMsg: String?, blockingTechnique: String) {
         _items.update { list ->
             list.map { item ->
                 if (item.name == name) {
@@ -41,7 +49,8 @@ object ShopItemRepository {
                         linkedGroupId = linkedGroupId,
                         startMessage = startMsg,
                         stopMessage = stopMsg,
-                        forceQuitMessage = forceQuitMsg
+                        forceQuitMessage = forceQuitMsg,
+                        blockingTechnique = blockingTechnique
                     )
                 } else {
                     item

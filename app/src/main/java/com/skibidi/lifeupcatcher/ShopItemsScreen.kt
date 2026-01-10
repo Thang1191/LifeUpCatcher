@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -40,11 +41,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,12 +60,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import rikka.shizuku.Shizuku
 
 @Composable
 fun ShopItemsScreen() {
     val context = LocalContext.current
     val items by ShopItemRepository.items.collectAsState()
     val isMonitoringEnabled by ShopItemRepository.isMonitoringEnabled.collectAsState()
+    val isShizukuEnabled by ShopItemRepository.isShizukuEnabled.collectAsState()
 
     val appPickerViewModel: AppPickerViewModel = viewModel(
         factory = androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory(context.applicationContext as android.app.Application)
@@ -71,6 +76,42 @@ fun ShopItemsScreen() {
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<ShopItemState?>(null) }
+    var shizukuAvailable by remember { mutableStateOf(false) }
+
+    val shizukuPermissionListener = remember {
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode == 1001 && grantResult == PackageManager.PERMISSION_GRANTED) {
+                ShopItemRepository.setShizukuEnabled(true)
+            }
+        }
+    }
+
+    val shizukuBinderReceivedListener = remember {
+        Shizuku.OnBinderReceivedListener {
+            shizukuAvailable = true
+        }
+    }
+
+    val shizukuBinderDeadListener = remember {
+        Shizuku.OnBinderDeadListener {
+            shizukuAvailable = false
+        }
+    }
+
+    DisposableEffect(Unit) {
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
+        Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
+        
+        // Initial check
+        shizukuAvailable = Shizuku.pingBinder()
+
+        onDispose {
+            Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+            Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
+            Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
+        }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -146,6 +187,58 @@ fun ShopItemsScreen() {
                 }
             }
 
+            // Shizuku Integration Card
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Shizuku Integration",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (isShizukuEnabled) "Enabled" else "Disabled",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isShizukuEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isShizukuEnabled,
+                        onCheckedChange = { enabled ->
+                             if (enabled) {
+                                try {
+                                    // Use the reactive state or dynamic check
+                                    if (shizukuAvailable || Shizuku.pingBinder()) {
+                                        if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                                            ShopItemRepository.setShizukuEnabled(true)
+                                        } else {
+                                            Shizuku.requestPermission(1001)
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Shizuku is not running", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Shizuku error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                             } else {
+                                 ShopItemRepository.setShizukuEnabled(false)
+                             }
+                        }
+                    )
+                }
+            }
+
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -163,10 +256,11 @@ fun ShopItemsScreen() {
     if (showAddDialog) {
         ItemDialog(
             groups = groups,
+            isShizukuEnabled = isShizukuEnabled,
             onDismiss = { showAddDialog = false },
-            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg ->
+            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
                 if (name.isNotBlank()) {
-                    ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg)
+                    ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique)
                 }
                 showAddDialog = false
             }
@@ -177,9 +271,10 @@ fun ShopItemsScreen() {
         ItemDialog(
             groups = groups,
             item = editingItem,
+            isShizukuEnabled = isShizukuEnabled,
             onDismiss = { editingItem = null },
-            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg ->
-                ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg)
+            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
+                ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique)
                 editingItem = null
             }
         )
@@ -190,16 +285,19 @@ fun ShopItemsScreen() {
 fun ItemDialog(
     groups: List<AppGroup>,
     item: ShopItemState? = null,
+    isShizukuEnabled: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, groupId: String?, startMsg: String?, stopMsg: String?, quitMsg: String?) -> Unit
+    onConfirm: (name: String, groupId: String?, startMsg: String?, stopMsg: String?, quitMsg: String?, blockingTechnique: String) -> Unit
 ) {
     var name by remember { mutableStateOf(item?.name ?: "") }
     var selectedGroup by remember { mutableStateOf(groups.find { it.id == item?.linkedGroupId }) }
     var startMsg by remember { mutableStateOf(item?.startMessage ?: "") }
     var stopMsg by remember { mutableStateOf(item?.stopMessage ?: "") }
     var quitMsg by remember { mutableStateOf(item?.forceQuitMessage ?: "") }
+    var blockingTechnique by remember { mutableStateOf(item?.blockingTechnique ?: "HOME") }
     
     var groupExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -254,6 +352,61 @@ fun ItemDialog(
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
+                Text("Blocking Technique", style = MaterialTheme.typography.titleSmall)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { blockingTechnique = "HOME" }
+                ) {
+                    RadioButton(
+                        selected = blockingTechnique == "HOME",
+                        onClick = { blockingTechnique = "HOME" }
+                    )
+                    Text(
+                        text = "Global Action Home",
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                     modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = isShizukuEnabled) {
+                             if (isShizukuEnabled) {
+                                 blockingTechnique = "DISABLE" 
+                             } else {
+                                 Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                             }
+                        }
+                ) {
+                    RadioButton(
+                        selected = blockingTechnique == "DISABLE",
+                        onClick = { 
+                             if (isShizukuEnabled) {
+                                 blockingTechnique = "DISABLE" 
+                             } else {
+                                 Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                             }
+                        },
+                        enabled = isShizukuEnabled
+                    )
+                    Column {
+                        Text(
+                            text = "Disable Apps",
+                            modifier = Modifier.padding(start = 8.dp),
+                            color = if (isShizukuEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        Text(
+                            text = "(Requires Shizuku/Root)",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
                 Text("Toast Messages (Optional)", style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -289,7 +442,8 @@ fun ItemDialog(
                         selectedGroup?.id,
                         startMsg.takeIf { it.isNotBlank() },
                         stopMsg.takeIf { it.isNotBlank() },
-                        quitMsg.takeIf { it.isNotBlank() }
+                        quitMsg.takeIf { it.isNotBlank() },
+                        blockingTechnique
                     ) 
                 },
                 enabled = name.isNotBlank()
@@ -331,6 +485,11 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
                 text = "Group: ${selectedGroup?.name ?: "None"}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary
+            )
+             Text(
+                text = "Type: ${if(item.blockingTechnique == "DISABLE") "Disable" else "Home Button"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary
             )
         }
         IconButton(onClick = onEdit) {
