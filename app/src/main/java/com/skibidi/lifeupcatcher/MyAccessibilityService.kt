@@ -1,7 +1,6 @@
 package com.skibidi.lifeupcatcher
 
 import android.accessibilityservice.AccessibilityService
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -9,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
@@ -17,6 +15,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,7 +48,7 @@ class MyAccessibilityService : AccessibilityService() {
                     val isStart = action == "app.lifeup.item.countdown.start"
                     Log.d("MyAccessibilityService", "Received broadcast: $action for item: $itemName")
                     
-                    val currentItem = ShopItemRepository.items.value.find { it.name == itemName }
+                    val currentItem = ShopItemRepository.items.value.find { shopItem -> shopItem.name == itemName }
                     ShopItemRepository.updateItemState(itemName, isStart)
                     
                     // Force update cache immediately on the main thread (receiver runs on main)
@@ -72,7 +71,10 @@ class MyAccessibilityService : AccessibilityService() {
                                 currentPkg = pkg
                                 lastForegroundPackage = pkg
                             }
-                            root.recycle()
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                                @Suppress("DEPRECATION")
+                                root.recycle()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("MyAccessibilityService", "Error retrieving root window", e)
@@ -98,7 +100,8 @@ class MyAccessibilityService : AccessibilityService() {
             addAction("app.lifeup.item.countdown.stop")
             addAction("app.lifeup.item.countdown.complete")
         }
-        registerReceiver(countdownReceiver, filter, RECEIVER_EXPORTED)
+        
+        ContextCompat.registerReceiver(this, countdownReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
 
         // Observe monitoring state
         serviceScope.launch {
@@ -240,11 +243,11 @@ class MyAccessibilityService : AccessibilityService() {
         serviceScope.cancel()
         try {
             unregisterReceiver(countdownReceiver)
-        } catch (e: IllegalArgumentException) {}
+        } catch (_: IllegalArgumentException) {}
         
         try {
              val prefs = getSharedPreferences("app_picker_prefs", 0)
              prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 }
