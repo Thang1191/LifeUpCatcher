@@ -17,7 +17,8 @@ data class ShopItemState(
     val startMessage: String? = null,
     val stopMessage: String? = null,
     val forceQuitMessage: String? = null,
-    val blockingTechnique: String = "HOME" // "HOME", "DISABLE", or "WORK_PROFILE"
+    val blockingTechnique: String = "HOME", // "HOME", "DISABLE", or "WORK_PROFILE"
+    val weekdayLimit: Set<String> = setOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 )
 
 object ShopItemRepository {
@@ -59,7 +60,14 @@ object ShopItemRepository {
             try {
                 val type = object : TypeToken<List<ShopItemState>>() {}.type
                 val list: List<ShopItemState> = Gson().fromJson(itemsJson, type)
-                _items.value = list
+                val migratedList = list.map { item ->
+                    if (item.weekdayLimit == null) {
+                        item.copy(weekdayLimit = setOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+                    } else {
+                        item
+                    }
+                }
+                _items.value = migratedList
             } catch (e: Exception) {
                 Log.e("ShopItemRepository", "Error loading items", e)
             }
@@ -94,15 +102,42 @@ object ShopItemRepository {
         save()
     }
 
-    fun addItem(name: String, linkedGroupId: String? = null, startMsg: String? = null, stopMsg: String? = null, forceQuitMsg: String? = null, blockingTechnique: String = "HOME") {
+    fun addItem(
+        name: String,
+        linkedGroupId: String? = null,
+        startMsg: String? = null,
+        stopMsg: String? = null,
+        forceQuitMsg: String? = null,
+        blockingTechnique: String = "HOME",
+        weekdayLimit: Set<String>
+    ) {
         if (_items.value.none { it.name == name }) {
-            _items.update { it + ShopItemState(name, false, linkedGroupId, startMsg, stopMsg, forceQuitMsg, blockingTechnique) }
+            _items.update {
+                it + ShopItemState(
+                    name,
+                    false,
+                    linkedGroupId,
+                    startMsg,
+                    stopMsg,
+                    forceQuitMsg,
+                    blockingTechnique,
+                    weekdayLimit
+                )
+            }
             Log.d("ShopItemRepository", "Added receiver for item: $name")
             save()
         }
     }
 
-    fun updateItem(name: String, linkedGroupId: String?, startMsg: String?, stopMsg: String?, forceQuitMsg: String?, blockingTechnique: String) {
+    fun updateItem(
+        name: String,
+        linkedGroupId: String?,
+        startMsg: String?,
+        stopMsg: String?,
+        forceQuitMsg: String?,
+        blockingTechnique: String,
+        weekdayLimit: Set<String>
+    ) {
         _items.update { list ->
             list.map { item ->
                 if (item.name == name) {
@@ -111,7 +146,8 @@ object ShopItemRepository {
                         startMessage = startMsg,
                         stopMessage = stopMsg,
                         forceQuitMessage = forceQuitMsg,
-                        blockingTechnique = blockingTechnique
+                        blockingTechnique = blockingTechnique,
+                        weekdayLimit = weekdayLimit
                     )
                 } else {
                     item

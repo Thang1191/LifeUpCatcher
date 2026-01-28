@@ -14,6 +14,7 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
     *   **Accessibility Service**: Instantly blocks apps by navigating to the home screen the moment your purchased time runs out.
     *   **Shizuku/Root Integration**: For more powerful control, completely disable apps, preventing them from being opened at all.
     *   **Work Profile**: Toggle your entire work profile on or off.
+*   **Weekday-Specific Rules**: Set which days of the week an item is allowed to be active.
 *   **Seamless LifeUp Integration**: Listens for signals from LifeUp to automatically start or stop access to your apps.
 *   **Custom Toast Messages**: Set your own custom alert messages for when app time starts, stops, or when an app is blocked.
 *   **Efficient & Battery-Friendly**: Designed to be fast and consume minimal battery (maybe).
@@ -22,7 +23,7 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
 
 1.  **Purchase an Item in LifeUp**: When you use a connected shop item in LifeUp, it sends a signal (broadcast).
 2.  **LifeUpCatcher Responds**: The app's monitoring service catches this signal and activates the rules for that item.
-3.  **Access Granted**: The apps in the linked group are now unblocked.
+3.  **Access Granted**: If the item is used on an allowed day, the apps in the linked group are now unblocked.
 4.  **Time's Up!**: When the timer on your LifeUp item expires, the apps are instantly blocked again using your chosen method.
 
 ## 🛠️ Setup Guide
@@ -51,6 +52,7 @@ Download the APK from releases and install it on your phone.
     *   `Global Action Home` is the standard method and works for most cases.
     *   `Disable Apps` is a more powerful option but requires Shizuku or Root access (see Step 5).
     *   `Work Profile` will toggle your work profile on and off (see step 6)
+*   **Weekday Limit**: Choose which days of the week this item is allowed to be active.
 *   **Toast Messages (Optional)**: You can set custom messages that will appear when the item is used, when it expires, or when an app is blocked.
 *   Save the item.
 

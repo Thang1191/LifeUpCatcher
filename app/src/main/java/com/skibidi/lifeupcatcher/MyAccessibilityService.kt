@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import java.util.Calendar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,18 +35,18 @@ import rikka.shizuku.Shizuku
 class MyAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
-    
+
     @Volatile
     private var groupsMap: Map<String, Set<String>> = emptyMap()
 
     @Volatile
     private var packageToGroupsMap: Map<String, Set<String>> = emptyMap()
-    
+
     @Volatile
     private var blockedPackagesCache: Map<String, String?> = emptyMap()
-    
+
     private var lastForegroundPackage: String? = null
-    
+
     private val lastAppliedPackageStates = mutableMapOf<String, Boolean>()
     private var workProfileUserHandle: UserHandle? = null
 
@@ -62,15 +63,15 @@ class MyAccessibilityService : AccessibilityService() {
             intent?.let {
                 val action = it.action
                 val itemName = it.getStringExtra("item") ?: it.getStringExtra("name") ?: it.getStringExtra("title")
-                
+
                 if (itemName != null) {
                     val isStart = action == "app.lifeup.item.countdown.start"
                     Log.d("MyAccessibilityService", "Received broadcast: $action for item: $itemName")
-                    
+
                     val currentItem = ShopItemRepository.items.value.find { shopItem -> shopItem.name == itemName }
-                    
+
                     ShopItemRepository.updateItemState(itemName, isStart)
-                    
+
                     rebuildBlockedCache()
 
                     if (currentItem != null) {
@@ -82,7 +83,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                     checkForegroundAndEnforce()
                 } else {
-                     Log.w("MyAccessibilityService", "Received broadcast $action but could not extract item name.")
+                    Log.w("MyAccessibilityService", "Received broadcast $action but could not extract item name.")
                 }
             }
         }
@@ -101,7 +102,7 @@ class MyAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         ShopItemRepository.initialize(applicationContext)
         Log.d("MyAccessibilityService", "Service connected")
-        
+
         val countdownFilter = IntentFilter().apply {
             addAction("app.lifeup.item.countdown.start")
             addAction("app.lifeup.item.countdown.stop")
@@ -127,7 +128,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        
+
         serviceScope.launch {
             ShopItemRepository.isShizukuEnabled.collectLatest { enabled ->
                 if (enabled) {
@@ -135,7 +136,7 @@ class MyAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        
+
         serviceScope.launch {
             ShopItemRepository.items.collectLatest { items ->
                 rebuildBlockedCache()
@@ -145,7 +146,7 @@ class MyAccessibilityService : AccessibilityService() {
 
         val prefs = getSharedPreferences("app_picker_prefs", 0)
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
-        
+
         serviceScope.launch {
             loadGroups(prefs)
         }
@@ -183,18 +184,19 @@ class MyAccessibilityService : AccessibilityService() {
             e.printStackTrace()
         }
     }
-    
+
     private suspend fun enforceShizukuBlocking(items: List<ShopItemState>) = withContext(Dispatchers.IO) {
         if (!ShopItemRepository.isShizukuEnabled.value) return@withContext
-        
+
         handleAppDisabling(items)
         handleWorkProfile(items)
     }
 
     private fun handleAppDisabling(items: List<ShopItemState>) {
+        val currentDay = getCurrentDayOfWeek()
         // Find all group IDs that are linked to an active "DISABLE" item.
         val activeGroupIds = items
-            .filter { it.isActive && it.blockingTechnique == "DISABLE" && it.linkedGroupId != null }
+            .filter { it.isActive && it.blockingTechnique == "DISABLE" && it.linkedGroupId != null && it.weekdayLimit.contains(currentDay) }
             .mapNotNull { it.linkedGroupId }
             .toSet()
 
@@ -219,7 +221,7 @@ class MyAccessibilityService : AccessibilityService() {
                 updates[pkg] = shouldEnable
             }
         }
-        
+
         if (commands.isNotEmpty()) {
             Log.d("MyAccessibilityService", "Enforcing app state: $commands")
             executeShizukuCommand(commands.toString())
@@ -228,6 +230,7 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun handleWorkProfile(items: List<ShopItemState>) {
+        val currentDay = getCurrentDayOfWeek()
         if (ContextCompat.checkSelfPermission(this, "android.permission.MODIFY_QUIET_MODE") != PackageManager.PERMISSION_GRANTED) {
             Log.e("MyAccessibilityService", "MODIFY_QUIET_MODE permission not granted. Cannot control work profile.")
             return
@@ -236,12 +239,12 @@ class MyAccessibilityService : AccessibilityService() {
         if (workProfileUserHandle == null) {
             findWorkProfileUserHandle()
             if (workProfileUserHandle == null) {
-                 Log.e("MyAccessibilityService", "No work profile user handle found. Cannot toggle work profile.")
+                Log.e("MyAccessibilityService", "No work profile user handle found. Cannot toggle work profile.")
                 return
             }
         }
-        
-        val workProfileItem = items.find { it.blockingTechnique == "WORK_PROFILE" }
+
+        val workProfileItem = items.find { it.blockingTechnique == "WORK_PROFILE" && it.weekdayLimit.contains(currentDay) }
         val shouldBeActive = workProfileItem?.isActive ?: false
         val desiredQuietMode = !shouldBeActive
 
@@ -281,12 +284,13 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun checkWorkProfileAndEnforce() = withContext(Dispatchers.IO) {
+        val currentDay = getCurrentDayOfWeek()
         if (!ShopItemRepository.isMonitoringEnabled.value) {
             Log.d("MyAccessibilityService", "Monitoring is disabled, skipping work profile check.")
             return@withContext
         }
 
-        val isWorkProfileItemActive = ShopItemRepository.items.value.any { it.blockingTechnique == "WORK_PROFILE" && it.isActive }
+        val isWorkProfileItemActive = ShopItemRepository.items.value.any { it.blockingTechnique == "WORK_PROFILE" && it.isActive && it.weekdayLimit.contains(currentDay)}
         val isQuietMode = isQuietModeEnabled()
 
         Log.d("MyAccessibilityService", "Work profile check: item active=$isWorkProfileItemActive, quiet mode=$isQuietMode")
@@ -297,7 +301,7 @@ class MyAccessibilityService : AccessibilityService() {
 
             val relevantItem = ShopItemRepository.items.value.find { it.blockingTechnique == "WORK_PROFILE" }
             val message = relevantItem?.forceQuitMessage ?: "Work profile disabled by LifeUp Catcher."
-            
+
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@MyAccessibilityService, message, Toast.LENGTH_LONG).show()
             }
@@ -320,9 +324,10 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun rebuildBlockedCache() {
         val items = ShopItemRepository.items.value
+        val currentDay = getCurrentDayOfWeek()
 
         // Get all group IDs linked to active items (any technique).
-        val activeGroupIds = items.filter { it.isActive && it.linkedGroupId != null }
+        val activeGroupIds = items.filter { it.isActive && it.linkedGroupId != null && it.weekdayLimit.contains(currentDay) }
             .map { it.linkedGroupId!! }
             .toSet()
 
@@ -348,14 +353,14 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!ShopItemRepository.isMonitoringEnabled.value) return
-        
+
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString() ?: return
             lastForegroundPackage = packageName
             checkAndEnforceRules(packageName)
         }
     }
-    
+
     private fun checkForegroundAndEnforce() {
         val currentPkg = lastForegroundPackage ?: return
         checkAndEnforceRules(currentPkg)
@@ -366,14 +371,14 @@ class MyAccessibilityService : AccessibilityService() {
         if (cache.containsKey(currentPackage)) {
             Log.i("MyAccessibilityService", "Blocking $currentPackage with HOME action")
             performGlobalAction(GLOBAL_ACTION_HOME)
-            
+
             val message = cache[currentPackage]
             if (!message.isNullOrBlank()) {
-                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
         }
     }
-    
+
     private fun executeShizukuCommand(command: String) {
         if (!Shizuku.pingBinder()) return
         try {
@@ -406,17 +411,30 @@ class MyAccessibilityService : AccessibilityService() {
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("LifeUp Catcher Monitoring")
             .setContentText("Monitoring foreground apps and system states...")
-            .setSmallIcon(R.drawable.ic_app_logo) 
+            .setSmallIcon(R.drawable.ic_app_logo)
             .setOngoing(true)
             .build()
 
         try {
-             ServiceCompat.startForeground(
-                 this, 1, notification, 
-                 if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-             )
+            ServiceCompat.startForeground(
+                this, 1, notification,
+                if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+            )
         } catch (e: Exception) {
             Log.e("MyAccessibilityService", "Failed to start foreground service", e)
+        }
+    }
+    
+    private fun getCurrentDayOfWeek(): String {
+        return when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> "Monday"
+            Calendar.TUESDAY -> "Tuesday"
+            Calendar.WEDNESDAY -> "Wednesday"
+            Calendar.THURSDAY -> "Thursday"
+            Calendar.FRIDAY -> "Friday"
+            Calendar.SATURDAY -> "Saturday"
+            Calendar.SUNDAY -> "Sunday"
+            else -> ""
         }
     }
 
@@ -429,9 +447,9 @@ class MyAccessibilityService : AccessibilityService() {
             unregisterReceiver(countdownReceiver)
             unregisterReceiver(workProfileStateReceiver)
         } catch (_: IllegalArgumentException) {}
-        
+
         try {
-             getSharedPreferences("app_picker_prefs", 0).unregisterOnSharedPreferenceChangeListener(prefsListener)
+            getSharedPreferences("app_picker_prefs", 0).unregisterOnSharedPreferenceChangeListener(prefsListener)
         } catch (_: Exception) {}
     }
 }

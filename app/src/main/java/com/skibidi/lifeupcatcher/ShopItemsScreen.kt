@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -103,7 +104,7 @@ fun ShopItemsScreen() {
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
         Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
-        
+
         shizukuAvailable = Shizuku.pingBinder()
 
         onDispose {
@@ -209,7 +210,7 @@ fun ShopItemsScreen() {
                     Switch(
                         checked = isShizukuEnabled,
                         onCheckedChange = { enabled ->
-                             if (enabled) {
+                            if (enabled) {
                                 try {
                                     if (shizukuAvailable || Shizuku.pingBinder()) {
                                         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
@@ -223,9 +224,9 @@ fun ShopItemsScreen() {
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Shizuku error: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
-                             } else {
-                                 ShopItemRepository.setShizukuEnabled(false)
-                             }
+                            } else {
+                                ShopItemRepository.setShizukuEnabled(false)
+                            }
                         }
                     )
                 }
@@ -236,7 +237,7 @@ fun ShopItemsScreen() {
             ) {
                 items(items) { item ->
                     ShopItemRow(
-                        item = item, 
+                        item = item,
                         groups = groups,
                         onEdit = { editingItem.value = item }
                     )
@@ -250,9 +251,9 @@ fun ShopItemsScreen() {
             groups = groups,
             isShizukuEnabled = isShizukuEnabled,
             onDismiss = { showAddDialog.value = false },
-            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
+            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit ->
                 if (name.isNotBlank()) {
-                    ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique)
+                    ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
                 }
                 showAddDialog.value = false
             }
@@ -265,8 +266,8 @@ fun ShopItemsScreen() {
             item = editingItem.value,
             isShizukuEnabled = isShizukuEnabled,
             onDismiss = { editingItem.value = null },
-            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique ->
-                ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique)
+            onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit ->
+                ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
                 editingItem.value = null
             }
         )
@@ -279,7 +280,7 @@ fun ItemDialog(
     item: ShopItemState? = null,
     isShizukuEnabled: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, groupId: String?, startMsg: String?, stopMsg: String?, quitMsg: String?, blockingTechnique: String) -> Unit
+    onConfirm: (name: String, groupId: String?, startMsg: String?, stopMsg: String?, quitMsg: String?, blockingTechnique: String, weekdayLimit: Set<String>) -> Unit
 ) {
     var name by remember { mutableStateOf(item?.name ?: "") }
     var selectedGroup by remember { mutableStateOf(groups.find { it.id == item?.linkedGroupId }) }
@@ -287,7 +288,8 @@ fun ItemDialog(
     var stopMsg by remember { mutableStateOf(item?.stopMessage ?: "") }
     var quitMsg by remember { mutableStateOf(item?.forceQuitMessage ?: "") }
     var blockingTechnique by remember { mutableStateOf(item?.blockingTechnique ?: "HOME") }
-    
+    var weekdayLimit by remember { mutableStateOf(item?.weekdayLimit ?: setOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) }
+
     var groupExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -308,7 +310,7 @@ fun ItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 val isGroupSelectionEnabled = blockingTechnique != "WORK_PROFILE"
 
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -329,7 +331,7 @@ fun ItemDialog(
                         )
                     }
                     DropdownMenu(
-                        expanded = groupExpanded, 
+                        expanded = groupExpanded,
                         onDismissRequest = { groupExpanded = false },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -351,7 +353,7 @@ fun ItemDialog(
                         }
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Blocking Technique", style = MaterialTheme.typography.titleSmall)
                 Row(
@@ -371,24 +373,24 @@ fun ItemDialog(
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                     modifier = Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = isShizukuEnabled) {
-                             if (isShizukuEnabled) {
-                                 blockingTechnique = "DISABLE" 
-                             } else {
-                                 Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
-                             }
+                            if (isShizukuEnabled) {
+                                blockingTechnique = "DISABLE"
+                            } else {
+                                Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                            }
                         }
                 ) {
                     RadioButton(
                         selected = blockingTechnique == "DISABLE",
-                        onClick = { 
-                             if (isShizukuEnabled) {
-                                 blockingTechnique = "DISABLE" 
-                             } else {
-                                 Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
-                             }
+                        onClick = {
+                            if (isShizukuEnabled) {
+                                blockingTechnique = "DISABLE"
+                            } else {
+                                Toast.makeText(context, "Enable Shizuku first", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         enabled = isShizukuEnabled
                     )
@@ -447,7 +449,7 @@ fun ItemDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Toast Messages (Optional)", style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 OutlinedTextField(
                     value = startMsg,
                     onValueChange = { startMsg = it },
@@ -455,7 +457,7 @@ fun ItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 OutlinedTextField(
                     value = stopMsg,
                     onValueChange = { stopMsg = it },
@@ -463,26 +465,84 @@ fun ItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 OutlinedTextField(
                     value = quitMsg,
                     onValueChange = { quitMsg = it },
                     label = { Text("On Force Quit") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Weekday Limit", style = MaterialTheme.typography.titleSmall)
+
+                val days = listOf("M", "Tu", "W", "Th", "F", "Sa", "Su")
+                val fullDayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        for (i in 0..3) {
+                            val day = days[i]
+                            val fullDayName = fullDayNames[i]
+                            val isSelected = weekdayLimit.contains(fullDayName)
+                            TextButton(
+                                onClick = {
+                                    weekdayLimit = if (isSelected) {
+                                        weekdayLimit - fullDayName
+                                    } else {
+                                        weekdayLimit + fullDayName
+                                    }
+                                },
+                                colors = ButtonDefaults.textButtonColors(
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                )
+                            ) {
+                                Text(day)
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        for (i in 4..6) {
+                            val day = days[i]
+                            val fullDayName = fullDayNames[i]
+                            val isSelected = weekdayLimit.contains(fullDayName)
+                            TextButton(
+                                onClick = {
+                                    weekdayLimit = if (isSelected) {
+                                        weekdayLimit - fullDayName
+                                    } else {
+                                        weekdayLimit + fullDayName
+                                    }
+                                },
+                                colors = ButtonDefaults.textButtonColors(
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                )
+                            ) {
+                                Text(day)
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { 
+                onClick = {
                     onConfirm(
-                        name, 
+                        name,
                         selectedGroup?.id.takeIf { blockingTechnique != "WORK_PROFILE" },
                         startMsg.takeIf { it.isNotBlank() },
                         stopMsg.takeIf { it.isNotBlank() },
                         quitMsg.takeIf { it.isNotBlank() },
-                        blockingTechnique
-                    ) 
+                        blockingTechnique,
+                        weekdayLimit
+                    )
                 },
                 enabled = name.isNotBlank()
             ) {
@@ -514,7 +574,7 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = item.name, 
+                text = item.name,
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.Black
             )
@@ -531,7 +591,7 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
                     color = Color.Black
                 )
             }
-             Text(
+            Text(
                 text = "Type: ${item.blockingTechnique.replace("_", " ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Black
