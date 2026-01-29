@@ -5,7 +5,9 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat.getSystemService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -71,6 +73,12 @@ class LauncherSwitchReceiver : BroadcastReceiver() {
     private fun rescheduleAlarm(context: Context, action: String?) {
         if (action == null) return
 
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Log.e(TAG, "Cannot reschedule exact alarm, permission not granted.")
+            return
+        }
+
         val repository = LauncherSettingsRepository(context)
         val time = if (action == "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER") {
             repository.startTime
@@ -99,7 +107,6 @@ class LauncherSwitchReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         Log.d(TAG, "Rescheduling alarm for action '$action' at ${nextTriggerCalendar.time}")
         alarmManager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,

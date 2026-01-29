@@ -90,47 +90,21 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     }
 
     private fun checkTimeWindowAndSwitchIfNeeded() {
-        val weekdays = repository.weekdays
-        val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        val todayIndex = today - 1
-
-        if (weekdays.getOrNull(todayIndex) != true) {
+        val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
+        if (repository.weekdays.getOrNull(todayIndex) != true) {
             Log.d(TAG, "Immediate check: Not an active day.")
             switchToMainLauncher()
             return
         }
 
-        val startTime = repository.startTime.split(":")
-        val startHour = startTime[0].toInt()
-        val startMinute = startTime[1].toInt()
-
-        val endTime = repository.endTime.split(":")
-        val endHour = endTime[0].toInt()
-        val endMinute = endTime[1].toInt()
-
-        val now = Calendar.getInstance()
-        val startCalendar = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, startHour); set(Calendar.MINUTE, startMinute) }
-        val endCalendar = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, endHour); set(Calendar.MINUTE, endMinute) }
-
-        val isInTimeWindow = if (startCalendar.after(endCalendar)) { // Overnight case
-            now.after(startCalendar) || now.before(endCalendar)
-        } else { // Same day case
-            now.after(startCalendar) && now.before(endCalendar)
-        }
+        val isInWindow = TimeUtils.isCurrentTimeInWindow(repository.startTime, repository.endTime)
+        val targetLauncher = if (isInWindow) repository.focusLauncher else repository.mainLauncher
+        val launcherType = if (isInWindow) "FOCUS" else "MAIN"
 
         viewModelScope.launch {
-            if (isInTimeWindow) {
-                val focusLauncher = repository.focusLauncher
-                if (!focusLauncher.isNullOrBlank()) {
-                    Log.d(TAG, "Immediate check: Inside time window. Switching to FOCUS launcher.")
-                    ShizukuUtils.executeCommand("pm set-home-activity $focusLauncher")
-                }
-            } else {
-                val mainLauncher = repository.mainLauncher
-                if (!mainLauncher.isNullOrBlank()) {
-                    Log.d(TAG, "Immediate check: Outside time window. Switching to MAIN launcher.")
-                    ShizukuUtils.executeCommand("pm set-home-activity $mainLauncher")
-                }
+            if (!targetLauncher.isNullOrBlank()) {
+                Log.d(TAG, "Immediate check: Switching to $launcherType launcher.")
+                ShizukuUtils.executeCommand("pm set-home-activity $targetLauncher")
             }
         }
     }
@@ -196,7 +170,7 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_Launcher"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -221,7 +195,7 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_Launcher"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
