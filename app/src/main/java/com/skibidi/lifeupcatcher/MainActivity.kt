@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -75,6 +76,12 @@ fun MainScreen(
                 NavigationBarItem(
                     selected = selectedIndex == 3,
                     onClick = { selectedIndex = 3 },
+                    icon = { Icon(Icons.Filled.Bedtime, contentDescription = "Sleep") },
+                    label = { Text("Sleep") }
+                )
+                NavigationBarItem(
+                    selected = selectedIndex == 4,
+                    onClick = { selectedIndex = 4 },
                     icon = { Icon(Icons.Filled.Build, contentDescription = "Debug") },
                     label = { Text("Debug") }
                 )
@@ -86,7 +93,8 @@ fun MainScreen(
                 0 -> AppPickerScreen(viewModel = appPickerViewModel)
                 1 -> ActivityScreen()
                 2 -> LauncherScreen(viewModel = launcherViewModel)
-                3 -> DebugScreen()
+                3 -> SleepScreen()
+                4 -> DebugScreen()
             }
         }
     }

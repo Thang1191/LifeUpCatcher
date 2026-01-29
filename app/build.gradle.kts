@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.skibidi.lifeupcatcher"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.gson)
+    implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
