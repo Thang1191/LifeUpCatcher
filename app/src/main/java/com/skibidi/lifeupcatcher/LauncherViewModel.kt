@@ -138,7 +138,6 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     private fun scheduleLauncherSwitch() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             Log.e(TAG, "Cannot schedule exact alarms. Please grant the permission.")
-            // Optionally, you could navigate the user to the settings screen to grant the permission.
             return
         }
 
@@ -173,10 +172,10 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
         }
 
         val focusIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
+            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_FOCUS_LAUNCHER
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
+            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_MAIN_LAUNCHER
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -198,10 +197,10 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
 
     private fun cancelLauncherSwitch() {
         val focusIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
+            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_FOCUS_LAUNCHER
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
+            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_MAIN_LAUNCHER
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

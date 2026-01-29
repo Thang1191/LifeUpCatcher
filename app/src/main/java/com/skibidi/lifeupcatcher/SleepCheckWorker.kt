@@ -29,7 +29,6 @@ class SleepCheckWorker(
     override suspend fun doWork(): Result {
         Log.d("SleepCheckWorker", "Worker started.")
 
-        // Create notification channel on first run
         createNotificationChannel(applicationContext)
         
         try {
@@ -60,11 +59,12 @@ class SleepCheckWorker(
                 triggerLifeUpIntent(coinAmount, message)
                 showSleepCheckNotification(applicationContext, title, message)
             }
+
+            scheduleNextWork()
+
         } catch (e: Exception) {
             Log.e("SleepCheckWorker", "An error occurred during work execution.", e)
             return Result.retry()
-        } finally {
-            scheduleNextWork()
         }
 
         return Result.success()
@@ -129,13 +129,29 @@ class SleepCheckWorker(
         }
     }
 
-    private fun scheduleNextWork() {
+    private suspend fun scheduleNextWork() {
         Log.d("SleepCheckWorker", "Re-scheduling next worker.")
         val workManager = WorkManager.getInstance(applicationContext)
         val workRequestTag = "sleep-check-worker"
+        
+        val settings = settingsRepository.sleepSettingsFlow.first()
+
+        val now = LocalDateTime.now()
+        var nextCheck = now
+            .withHour(settings.checkHour)
+            .withMinute(settings.checkMinute)
+            .withSecond(0)
+
+        if (nextCheck.isBefore(now)) {
+            nextCheck = nextCheck.plusDays(1)
+        }
+
+        val initialDelay = Duration.between(now, nextCheck).toMillis()
+
+        Log.d("SleepCheckWorker", "Next check: $nextCheck, Initial delay: $initialDelay ms")
 
         val sleepCheckWorkRequest = OneTimeWorkRequestBuilder<SleepCheckWorker>()
-            .setInitialDelay(24, TimeUnit.HOURS)
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
             .addTag(workRequestTag)
             .build()
 
@@ -144,6 +160,6 @@ class SleepCheckWorker(
             ExistingWorkPolicy.REPLACE,
             sleepCheckWorkRequest
         )
-        Log.d("SleepCheckWorker", "Next work request enqueued to run in approximately 24 hours.")
+        Log.d("SleepCheckWorker", "Next work request enqueued.")
     }
 }
