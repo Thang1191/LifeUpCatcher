@@ -90,14 +90,15 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     }
 
     private fun checkTimeWindowAndSwitchIfNeeded() {
-        val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
+        val today = Calendar.getInstance()
+        val todayIndex = (today.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Monday is 0, Sunday is 6
         if (repository.weekdays.getOrNull(todayIndex) != true) {
             Log.d(TAG, "Immediate check: Not an active day.")
             switchToMainLauncher()
             return
         }
 
-        val isInWindow = TimeUtils.isCurrentTimeInWindow(repository.startTime, repository.endTime)
+        val isInWindow = isCurrentTimeInWindow(repository.startTime, repository.endTime)
         val targetLauncher = if (isInWindow) repository.focusLauncher else repository.mainLauncher
         val launcherType = if (isInWindow) "FOCUS" else "MAIN"
 
@@ -137,8 +138,11 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     private fun scheduleLauncherSwitch() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             Log.e(TAG, "Cannot schedule exact alarms. Please grant the permission.")
+            // Optionally, you could navigate the user to the settings screen to grant the permission.
             return
         }
+
+        val now = Calendar.getInstance()
 
         val startTime = repository.startTime.split(":")
         val startHour = startTime[0].toInt()
@@ -152,8 +156,9 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             set(Calendar.HOUR_OF_DAY, startHour)
             set(Calendar.MINUTE, startMinute)
             set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
-        if (startCalendar.before(Calendar.getInstance())) {
+        if (!startCalendar.after(now)) {
             startCalendar.add(Calendar.DAY_OF_MONTH, 1)
         }
 
@@ -161,8 +166,9 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             set(Calendar.HOUR_OF_DAY, endHour)
             set(Calendar.MINUTE, endMinute)
             set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
-        if (endCalendar.before(Calendar.getInstance())) {
+        if (!endCalendar.after(now)) {
             endCalendar.add(Calendar.DAY_OF_MONTH, 1)
         }
 
@@ -170,7 +176,7 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_Launcher"
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -195,7 +201,7 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_Launcher"
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

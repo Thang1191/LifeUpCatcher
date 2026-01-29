@@ -14,6 +14,12 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
     *   **Accessibility Service**: Instantly blocks apps by navigating to the home screen the moment your purchased time runs out.
     *   **Shizuku/Root Integration**: For more powerful control, completely disable apps, preventing them from being opened at all.
     *   **Work Profile**: Toggle your entire work profile on or off.
+*   **Sleep Tracking & Rewards**:
+    *   Connects to **Google Health Connect** to read your sleep data.
+    *   Set a daily time to check your sleep duration.
+    *   Define a sleep goal (e.g., 8 hours).
+    *   Automatically reward or penalize yourself with LifeUp coins based on whether you met your goal.
+    *   Customize notification titles and messages for success and failure.
 *   **Weekday-Specific Rules**: Set which days of the week an item is allowed to be active.
 *   **Seamless LifeUp Integration**: Listens for signals from LifeUp to automatically start or stop access to your apps.
 *   **Custom Toast Messages**: Set your own custom alert messages for when app time starts, stops, or when an app is blocked.
@@ -89,6 +95,16 @@ You can use LifeUpCatcher to turn your work profile on or off. This is useful if
 
 Now, whenever you buy your item in LifeUp, your selected apps will be unblocked for the duration of the countdown!
 
+### 8. (Optional) Sleep Tracking
+*   Go to the **Sleep** tab.
+*   Grant **Health Connect** permissions when prompted. This is required to read your sleep data.
+*   Enable the **Sleep Service** and configure your settings:
+    *   **Check Time**: The time of day the app will check your sleep duration.
+    *   **Threshold**: Your sleep goal (e.g., 8 hours).
+    *   **Reward/Punishment**: The number of coins to award or subtract.
+    *   **Custom Messages**: Set the titles and messages for your success and failure notifications.
+*   Save your settings. The app will now automatically check your sleep each day and send the reward or punishment to LifeUp.
+
 ## 📝 Why These Permissions?
 
 *   `BIND_ACCESSIBILITY_SERVICE`: To see the currently running app and return to the home screen to block access.
@@ -96,3 +112,5 @@ Now, whenever you buy your item in LifeUp, your selected apps will be unblocked 
 *   `POST_NOTIFICATIONS`: To show a persistent notification, which is required by Android to keep the background monitoring service alive.
 *   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To ensure the operating system doesn't shut down the service to save battery.
 *   `MODIFY_QUIET_MODE`: To turn the work profile on and off.
+*   `health.READ_SLEEP`: To read your sleep data from Health Connect.
+*   `SCHEDULE_EXACT_ALARM`: To schedule the daily sleep check.

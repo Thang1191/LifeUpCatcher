@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.shizuku.provider)
     implementation(libs.gson)
     implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
+    implementation("androidx.work:work-runtime-ktx:2.11.1")
+    implementation("androidx.datastore:datastore-preferences:1.2.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
