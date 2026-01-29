@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.skibidi.lifeupcatcher
 
 import android.app.TimePickerDialog
@@ -6,11 +8,14 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -19,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -34,9 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.util.Calendar
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LauncherScreen(
     viewModel: LauncherViewModel = viewModel()
@@ -54,6 +59,7 @@ fun LauncherScreen(
                 PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
             )
         } else {
+            @Suppress("DEPRECATION")
             packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         }
         installedLaunchers = resolveInfoList.map { it.activityInfo.packageName }
@@ -70,7 +76,7 @@ fun LauncherScreen(
             Text("Enable Launcher Service")
             Switch(
                 checked = uiState.isServiceEnabled,
-                onCheckedChange = { viewModel.setServiceEnabled(it) },
+                onCheckedChange = viewModel::setServiceEnabled,
                 enabled = uiState.isShizukuAvailable
             )
         }
@@ -82,9 +88,19 @@ fun LauncherScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Launcher Selection")
                 Spacer(modifier = Modifier.height(8.dp))
-                LauncherDropdown("Main Launcher", installedLaunchers, uiState.mainLauncher) { viewModel.setMainLauncher(it) }
+                LauncherDropdown(
+                    "Main Launcher",
+                    installedLaunchers,
+                    uiState.mainLauncher,
+                    viewModel::setMainLauncher
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                LauncherDropdown("Focus Launcher", installedLaunchers, uiState.focusLauncher) { viewModel.setFocusLauncher(it) }
+                LauncherDropdown(
+                    "Focus Launcher",
+                    installedLaunchers,
+                    uiState.focusLauncher,
+                    viewModel::setFocusLauncher
+                )
             }
         }
 
@@ -99,9 +115,17 @@ fun LauncherScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TimePicker(label = "Start Time", selectedTime = uiState.startTime) { viewModel.setStartTime(it) }
+                    TimePicker(
+                        label = "Start Time",
+                        selectedTime = uiState.startTime,
+                        onTimeSelected = viewModel::setStartTime
+                    )
                     Text("-")
-                    TimePicker(label = "End Time", selectedTime = uiState.endTime) { viewModel.setEndTime(it) }
+                    TimePicker(
+                        label = "End Time",
+                        selectedTime = uiState.endTime,
+                        onTimeSelected = viewModel::setEndTime
+                    )
                 }
             }
         }
@@ -112,13 +136,15 @@ fun LauncherScreen(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Active Days")
-                WeekdaySelector(selectedDays = uiState.weekdays) { viewModel.setWeekdays(it) }
+                WeekdaySelector(
+                    selectedDays = uiState.weekdays,
+                    onSelectionChange = viewModel::setWeekdays
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LauncherDropdown(
     label: String,
@@ -130,7 +156,7 @@ fun LauncherDropdown(
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
+        onExpandedChange = { expanded = it }
     ) {
         TextField(
             value = selectedLauncher,
@@ -139,7 +165,7 @@ fun LauncherDropdown(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(MenuAnchorType.PrimaryEditable, false)
                 .fillMaxWidth()
         )
         ExposedDropdownMenu(
@@ -162,13 +188,12 @@ fun LauncherDropdown(
 @Composable
 fun TimePicker(label: String, selectedTime: String, onTimeSelected: (String) -> Unit) {
     val context = LocalContext.current
-    val calendar = Calendar.getInstance()
     val (hour, minute) = selectedTime.split(':').map { it.toInt() }
 
     val timePickerDialog = TimePickerDialog(
         context,
         { _, selectedHour, selectedMinute ->
-            onTimeSelected(String.format("%02d:%02d", selectedHour, selectedMinute))
+            onTimeSelected(String.format(Locale.US, "%02d:%02d", selectedHour, selectedMinute))
         }, hour, minute, true
     )
 
@@ -192,6 +217,9 @@ fun WeekdaySelector(selectedDays: List<Boolean>, onSelectionChange: (List<Boolea
                     newSelection[index] = !newSelection[index]
                     onSelectionChange(newSelection)
                 },
+                shape = CircleShape,
+                modifier = Modifier.size(40.dp),
+                contentPadding = PaddingValues(0.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
                 )
