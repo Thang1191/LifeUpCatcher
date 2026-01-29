@@ -58,6 +58,15 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val homeActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.skibidi.lifeupcatcher.PERFORM_HOME_ACTION") {
+                Log.d("MyAccessibilityService", "Received home action broadcast. Performing GLOBAL_ACTION_HOME.")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            }
+        }
+    }
+
     private val countdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             intent?.let {
@@ -102,6 +111,9 @@ class MyAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         ShopItemRepository.initialize(applicationContext)
         Log.d("MyAccessibilityService", "Service connected")
+
+        val homeActionFilter = IntentFilter("com.skibidi.lifeupcatcher.PERFORM_HOME_ACTION")
+        ContextCompat.registerReceiver(this, homeActionReceiver, homeActionFilter, ContextCompat.RECEIVER_EXPORTED)
 
         val countdownFilter = IntentFilter().apply {
             addAction("app.lifeup.item.countdown.start")
@@ -444,6 +456,7 @@ class MyAccessibilityService : AccessibilityService() {
         super.onDestroy()
         serviceScope.cancel()
         try {
+            unregisterReceiver(homeActionReceiver)
             unregisterReceiver(countdownReceiver)
             unregisterReceiver(workProfileStateReceiver)
         } catch (_: IllegalArgumentException) {}

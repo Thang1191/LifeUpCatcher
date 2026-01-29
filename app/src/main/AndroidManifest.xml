@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.MODIFY_QUIET_MODE"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
 
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
@@ -27,7 +29,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.LifeUpCatcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -51,14 +52,24 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="LifeUp Catcher monitors foreground apps to enforce blocking rules." />
         </service>
-        
+
+        <receiver
+            android:name=".LauncherSwitchReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER" />
+                <action android:name="com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:exported="true"
             android:multiprocess="false"
             android:enabled="true" />
-            
+
     </application>
 
 </manifest>
