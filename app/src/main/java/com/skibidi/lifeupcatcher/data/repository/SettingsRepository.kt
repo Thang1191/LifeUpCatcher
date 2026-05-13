@@ -32,11 +32,22 @@ class SettingsRepository @Inject constructor(
         val SLEEP_SUCCESS_MESSAGE = stringPreferencesKey("sleep_success_message")
         val SLEEP_FAILURE_TITLE = stringPreferencesKey("sleep_failure_title")
         val SLEEP_FAILURE_MESSAGE = stringPreferencesKey("sleep_failure_message")
+
+        // Lock Settings
+        val RANDOM_LOCK_ENABLED = booleanPreferencesKey("random_lock_enabled")
+        val RANDOM_LOCK_CHAR_COUNT = intPreferencesKey("random_lock_char_count")
     }
 
     val isMonitoringEnabled: Flow<Boolean> = dataStore.data.map { it[PreferencesKeys.MONITORING_ENABLED] ?: false }
     val isShizukuEnabled: Flow<Boolean> = dataStore.data.map { it[PreferencesKeys.SHIZUKU_ENABLED] ?: false }
     val isDebuggingEnabled: Flow<Boolean> = dataStore.data.map { it[PreferencesKeys.DEBUGGING_ENABLED] ?: false }
+
+    val randomLockSettingsFlow: Flow<RandomLockSettings> = dataStore.data.map { preferences ->
+        RandomLockSettings(
+            isEnabled = preferences[PreferencesKeys.RANDOM_LOCK_ENABLED] ?: false,
+            charCount = preferences[PreferencesKeys.RANDOM_LOCK_CHAR_COUNT] ?: 10
+        )
+    }
 
     val sleepSettingsFlow: Flow<SleepSettings> = dataStore.data.map { preferences ->
         SleepSettings(
@@ -66,6 +77,13 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[PreferencesKeys.DEBUGGING_ENABLED] = enabled }
     }
 
+    suspend fun updateRandomLockSettings(settings: RandomLockSettings) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.RANDOM_LOCK_ENABLED] = settings.isEnabled
+            preferences[PreferencesKeys.RANDOM_LOCK_CHAR_COUNT] = settings.charCount
+        }
+    }
+
     suspend fun updateSleepSettings(settings: SleepSettings) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.SLEEP_SERVICE_ENABLED] = settings.isServiceEnabled
@@ -82,6 +100,11 @@ class SettingsRepository @Inject constructor(
         }
     }
 }
+
+data class RandomLockSettings(
+    val isEnabled: Boolean = false,
+    val charCount: Int = 10
+)
 
 data class SleepSettings(
     val isServiceEnabled: Boolean = true,

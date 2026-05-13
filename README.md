@@ -14,6 +14,7 @@ It acts as a bridge between LifeUp and your device, allowing you to block or unb
     *   **Accessibility Service**: Instantly blocks apps by navigating to the home screen the moment your purchased time runs out.
     *   **Shizuku/Root Integration**: For more powerful control, completely disable apps, preventing them from being opened at all.
     *   **Work Profile**: Toggle your entire work profile on or off.
+*   **Random Challenge Lock**: Secure your settings with a random character typing challenge to prevent impulsive modifications.
 *   **Sleep Tracking & Rewards**:
     *   Connects to **Google Health Connect** to read your sleep data.
     *   Set a daily time to check your sleep duration.
@@ -104,6 +105,18 @@ Now, whenever you buy your item in LifeUp, your selected apps will be unblocked 
     *   **Reward/Punishment**: The number of coins to award or subtract.
     *   **Custom Messages**: Set the titles and messages for your success and failure notifications.
 *   Save your settings. The app will now automatically check your sleep each day and send the reward or punishment to LifeUp.
+
+### 9. (Optional) Random Challenge Lock
+Protect your settings from your future self by enabling the lock challenge.
+
+*   Tap the **Lock FAB** in the bottom-left corner of any screen.
+*   Enter the desired **Character Count** for the challenge (e.g., 15-20 for higher difficulty).
+*   Tap **Enable & Lock**.
+*   **To Unlock**: Tap the large lock icon on the overlay and type the displayed random characters exactly.
+*   **Security Features**:
+    *   **Anti-Copy/Lens**: Screen content is hidden from system tools and screenshots (`FLAG_SECURE`).
+    *   **Focus Loss Reset**: The challenge immediately resets if you pull down the notification shade or switch apps.
+    *   **Auto Re-lock**: Access is granted only until you leave the app; it will re-lock the moment you exit.
 
 ## 📝 Why These Permissions?
 
