@@ -74,47 +74,13 @@ fun ShopItemsScreen(
     val items by viewModel.items.collectAsState()
     val isMonitoringEnabled by viewModel.isMonitoringEnabled.collectAsState()
     val isShizukuEnabled by viewModel.isShizukuEnabled.collectAsState()
+    val shizukuState by viewModel.shizukuState.collectAsState()
 
     val appPickerViewModel: AppPickerViewModel = hiltViewModel()
     val groups by appPickerViewModel.groups.collectAsState()
 
     val showAddDialog = remember { mutableStateOf(false) }
     val editingItem = remember { mutableStateOf<MonitoredItemEntity?>(null) }
-    var shizukuAvailable by remember { mutableStateOf(false) }
-
-    val shizukuPermissionListener = remember {
-        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-            if (requestCode == 1001 && grantResult == PackageManager.PERMISSION_GRANTED) {
-                viewModel.setShizukuEnabled(true)
-            }
-        }
-    }
-
-    val shizukuBinderReceivedListener = remember {
-        Shizuku.OnBinderReceivedListener {
-            shizukuAvailable = true
-        }
-    }
-
-    val shizukuBinderDeadListener = remember {
-        Shizuku.OnBinderDeadListener {
-            shizukuAvailable = false
-        }
-    }
-
-    DisposableEffect(Unit) {
-        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
-        Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
-        Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
-
-        shizukuAvailable = Shizuku.pingBinder()
-
-        onDispose {
-            Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
-            Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
-            Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
-        }
-    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -190,10 +156,25 @@ fun ShopItemsScreen(
                             text = "Monitoring Service",
                             style = MaterialTheme.typography.titleMedium
                         )
+                        val shizukuActive = isShizukuEnabled && shizukuState.isAvailable && shizukuState.isPermissionGranted
+                        val accessibilityActive = isAccessibilityPermissionGranted
+
+                        val statusText = when {
+                            !isMonitoringEnabled -> "Stopped"
+                            shizukuActive && accessibilityActive -> "Running (Full Protection)"
+                            shizukuActive -> "Running (Shizuku blocks only)"
+                            accessibilityActive -> "Running (Accessibility blocks only)"
+                            else -> "Permission Required"
+                        }
+                        val statusColor = when {
+                            !isMonitoringEnabled -> MaterialTheme.colorScheme.onSurfaceVariant
+                            statusText == "Permission Required" -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.primary
+                        }
                         Text(
-                            text = if (isMonitoringEnabled) "Running" else "Stopped",
+                            text = statusText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isMonitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = statusColor
                         )
                     }
                     Switch(
@@ -238,10 +219,21 @@ fun ShopItemsScreen(
                             text = "Shizuku Integration",
                             style = MaterialTheme.typography.titleMedium
                         )
+                        val shizukuStatusText = when {
+                            !isShizukuEnabled -> "Disabled"
+                            !shizukuState.isAvailable -> "Shizuku Not Running"
+                            !shizukuState.isPermissionGranted -> "Permission Required"
+                            else -> "Enabled"
+                        }
+                        val shizukuStatusColor = when {
+                            !isShizukuEnabled -> MaterialTheme.colorScheme.onSurfaceVariant
+                            shizukuStatusText == "Enabled" -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.error
+                        }
                         Text(
-                            text = if (isShizukuEnabled) "Enabled" else "Disabled",
+                            text = shizukuStatusText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isShizukuEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = shizukuStatusColor
                         )
                     }
                     Switch(
@@ -249,8 +241,8 @@ fun ShopItemsScreen(
                         onCheckedChange = { enabled ->
                             if (enabled) {
                                 try {
-                                    if (shizukuAvailable || Shizuku.pingBinder()) {
-                                        if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                                    if (shizukuState.isAvailable) {
+                                        if (shizukuState.isPermissionGranted) {
                                             viewModel.setShizukuEnabled(true)
                                         } else {
                                             Shizuku.requestPermission(1001)

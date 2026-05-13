@@ -39,7 +39,7 @@ class LifeUpBroadcastReceiver : BroadcastReceiver() {
                     }
                     
                     // Trigger a check in the service if it's running
-                    val serviceIntent = Intent(context, MyAccessibilityService::class.java).apply {
+                    val serviceIntent = Intent(context, MainService::class.java).apply {
                         this.action = "com.skibidi.lifeupcatcher.CHECK_ENFORCE"
                     }
                     context.startService(serviceIntent)

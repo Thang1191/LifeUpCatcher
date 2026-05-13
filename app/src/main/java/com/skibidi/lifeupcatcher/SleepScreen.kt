@@ -126,10 +126,23 @@ class HealthConnectViewModel @Inject constructor(
         }
     }
 
-    fun saveSettings(newSettings: SleepSettings) {
+    fun updateSettings(newSettings: SleepSettings) {
         viewModelScope.launch {
             settingsRepository.updateSleepSettings(newSettings)
             if (newSettings.isServiceEnabled) {
+                scheduleSleepCheckWorker(newSettings)
+            } else {
+                cancelSleepCheckWorker()
+            }
+        }
+    }
+
+    fun setServiceEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = settings.value
+            val newSettings = current.copy(isServiceEnabled = enabled)
+            settingsRepository.updateSleepSettings(newSettings)
+            if (enabled) {
                 scheduleSleepCheckWorker(newSettings)
             } else {
                 cancelSleepCheckWorker()
@@ -233,7 +246,11 @@ fun SleepScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     SleepDataCard(sleepData)
                     Spacer(modifier = Modifier.height(16.dp))
-                    SleepRewardSettings(settings, onSave = viewModel::saveSettings)
+                    SleepRewardSettings(
+                        settings = settings,
+                        onUpdate = viewModel::updateSettings,
+                        onToggleService = viewModel::setServiceEnabled
+                    )
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Button(onClick = { permissionsLauncher.launch(viewModel.permissions) }) {
@@ -304,30 +321,18 @@ fun NotificationPermissionRequest() {
 @Composable
 fun SleepRewardSettings(
     settings: SleepSettings,
-    onSave: (SleepSettings) -> Unit
+    onUpdate: (SleepSettings) -> Unit,
+    onToggleService: (Boolean) -> Unit
 ) {
-    var isEnabled by remember(settings) { mutableStateOf(settings.isServiceEnabled) }
-    var checkHour by remember(settings) { mutableStateOf(settings.checkHour) }
-    var checkMinute by remember(settings) { mutableStateOf(settings.checkMinute) }
-    var thresholdHours by remember(settings) { mutableStateOf(settings.thresholdHours.toString()) }
-    var thresholdMinutes by remember(settings) { mutableStateOf(settings.thresholdMinutes.toString()) }
-    var rewardAmount by remember(settings) { mutableStateOf(settings.rewardAmount.toString()) }
-    var punishmentAmount by remember(settings) { mutableStateOf(settings.punishmentAmount.toString()) }
-    var successTitle by remember(settings) { mutableStateOf(settings.successTitle) }
-    var successMessage by remember(settings) { mutableStateOf(settings.successMessage) }
-    var failureTitle by remember(settings) { mutableStateOf(settings.failureTitle) }
-    var failureMessage by remember(settings) { mutableStateOf(settings.failureMessage) }
-
     val context = LocalContext.current
     val timePickerDialog = remember {
         TimePickerDialog(
             context,
             { _, hour: Int, minute: Int ->
-                checkHour = hour
-                checkMinute = minute
+                onUpdate(settings.copy(checkHour = hour, checkMinute = minute))
             },
-            checkHour,
-            checkMinute,
+            settings.checkHour,
+            settings.checkMinute,
             true
         )
     }
@@ -350,8 +355,8 @@ fun SleepRewardSettings(
             ) {
                 Text("Enable Sleep Service", modifier = Modifier.weight(1f))
                 Switch(
-                    checked = isEnabled,
-                    onCheckedChange = { isEnabled = it }
+                    checked = settings.isServiceEnabled,
+                    onCheckedChange = onToggleService
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -360,13 +365,13 @@ fun SleepRewardSettings(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Check Time: ${formatTime(checkHour, checkMinute)}", modifier = Modifier.weight(1f))
+                Text("Check Time: ${formatTime(settings.checkHour, settings.checkMinute)}", modifier = Modifier.weight(1f))
                 Button(
                     onClick = {
-                        timePickerDialog.updateTime(checkHour, checkMinute)
+                        timePickerDialog.updateTime(settings.checkHour, settings.checkMinute)
                         timePickerDialog.show()
                     },
-                    enabled = isEnabled
+                    enabled = settings.isServiceEnabled
                 ) {
                     Text("Change")
                 }
@@ -375,100 +380,92 @@ fun SleepRewardSettings(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
-                    value = thresholdHours,
-                    onValueChange = { thresholdHours = it.filter { char -> char.isDigit() } },
+                    value = settings.thresholdHours.toString(),
+                    onValueChange = { 
+                        val valStr = it.filter { char -> char.isDigit() }
+                        onUpdate(settings.copy(thresholdHours = valStr.toIntOrNull() ?: 0))
+                    },
                     label = { Text("Threshold Hours") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    enabled = isEnabled
+                    enabled = settings.isServiceEnabled
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 OutlinedTextField(
-                    value = thresholdMinutes,
-                    onValueChange = { thresholdMinutes = it.filter { char -> char.isDigit() } },
+                    value = settings.thresholdMinutes.toString(),
+                    onValueChange = { 
+                        val valStr = it.filter { char -> char.isDigit() }
+                        onUpdate(settings.copy(thresholdMinutes = valStr.toIntOrNull() ?: 0))
+                    },
                     label = { Text("Threshold Minutes") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    enabled = isEnabled
+                    enabled = settings.isServiceEnabled
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
-                    value = rewardAmount,
-                    onValueChange = { rewardAmount = it.filter { char -> char.isDigit() } },
+                    value = settings.rewardAmount.toString(),
+                    onValueChange = { 
+                        val valStr = it.filter { char -> char.isDigit() }
+                        onUpdate(settings.copy(rewardAmount = valStr.toIntOrNull() ?: 0))
+                    },
                     label = { Text("Reward") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    enabled = isEnabled
+                    enabled = settings.isServiceEnabled
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 OutlinedTextField(
-                    value = punishmentAmount,
-                    onValueChange = { punishmentAmount = it.filter { char -> char.isDigit() } },
+                    value = settings.punishmentAmount.toString(),
+                    onValueChange = { 
+                        val valStr = it.filter { char -> char.isDigit() }
+                        onUpdate(settings.copy(punishmentAmount = valStr.toIntOrNull() ?: 0))
+                    },
                     label = { Text("Punishment") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    enabled = isEnabled
+                    enabled = settings.isServiceEnabled
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = successTitle,
-                onValueChange = { successTitle = it },
+                value = settings.successTitle,
+                onValueChange = { onUpdate(settings.copy(successTitle = it)) },
                 label = { Text("Success Title") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isEnabled
+                enabled = settings.isServiceEnabled
             )
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = successMessage,
-                onValueChange = { successMessage = it },
+                value = settings.successMessage,
+                onValueChange = { onUpdate(settings.copy(successMessage = it)) },
                 label = { Text("Success Message") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isEnabled
+                enabled = settings.isServiceEnabled
             )
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = failureTitle,
-                onValueChange = { failureTitle = it },
+                value = settings.failureTitle,
+                onValueChange = { onUpdate(settings.copy(failureTitle = it)) },
                 label = { Text("Failure Title") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isEnabled
+                enabled = settings.isServiceEnabled
             )
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = failureMessage,
-                onValueChange = { failureMessage = it },
+                value = settings.failureMessage,
+                onValueChange = { onUpdate(settings.copy(failureMessage = it)) },
                 label = { Text("Failure Message") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = isEnabled
+                enabled = settings.isServiceEnabled
             )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(onClick = {
-                val newSettings = SleepSettings(
-                    isServiceEnabled = isEnabled,
-                    checkHour = checkHour,
-                    checkMinute = checkMinute,
-                    thresholdHours = thresholdHours.toIntOrNull() ?: 8,
-                    thresholdMinutes = thresholdMinutes.toIntOrNull() ?: 0,
-                    rewardAmount = rewardAmount.toIntOrNull() ?: 10,
-                    punishmentAmount = punishmentAmount.toIntOrNull() ?: 5,
-                    successTitle = successTitle,
-                    successMessage = successMessage,
-                    failureTitle = failureTitle,
-                    failureMessage = failureMessage
-                )
-                onSave(newSettings)
-            }) {
-                Text("Save Settings")
-            }
         }
     }
 }

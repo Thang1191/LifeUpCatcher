@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.skibidi.lifeupcatcher.data.repository.DnsRepository
+import com.skibidi.lifeupcatcher.data.repository.ShizukuRepository
+import com.skibidi.lifeupcatcher.data.repository.ShizukuState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +30,8 @@ data class DnsUiState(
 @HiltViewModel
 class DnsViewModel @Inject constructor(
     private val application: Application,
-    private val dnsRepository: DnsRepository
+    private val dnsRepository: DnsRepository,
+    private val shizukuRepository: ShizukuRepository
 ) : AndroidViewModel(application) {
 
     var dnsHostname by mutableStateOf("")
@@ -36,15 +39,16 @@ class DnsViewModel @Inject constructor(
 
     val uiState: StateFlow<DnsUiState> = combine(
         dnsRepository.isDnsLockingEnabled,
-        dnsRepository.dnsHostname
-    ) { isEnabled, hostname ->
+        dnsRepository.dnsHostname,
+        shizukuRepository.state
+    ) { isEnabled, hostname, shizukuState ->
         // Sync the property with repository on first load or if changed elsewhere
         if (dnsHostname.isEmpty() && hostname.isNotEmpty()) {
             dnsHostname = hostname
         }
         DnsUiState(
             isDnsLockingEnabled = isEnabled,
-            isShizukuAvailable = ShizukuUtils.isShizukuAvailable()
+            isShizukuAvailable = shizukuState.isAvailable && shizukuState.isPermissionGranted
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DnsUiState())
 
@@ -63,27 +67,14 @@ class DnsViewModel @Inject constructor(
 
         viewModelScope.launch {
             dnsRepository.setDnsLockingEnabled(enabled)
-            updateServiceState(enabled)
             if (enabled) {
                 enforceDnsSettings(dnsHostname)
             }
         }
     }
 
-    private fun updateServiceState(enabled: Boolean) {
-        val intent = Intent(application, DnsLockService::class.java)
-        if (enabled) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                application.startForegroundService(intent)
-            } else {
-                application.startService(intent)
-            }
-        } else {
-            application.stopService(intent)
-        }
-    }
-
     private fun enforceDnsSettings(hostname: String) {
+
         if (hostname.isBlank()) return
         viewModelScope.launch {
             Log.d(TAG, "Enforcing DNS settings: hostname=$hostname")

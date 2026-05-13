@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.skibidi.lifeupcatcher.data.repository.LauncherRepository
+import com.skibidi.lifeupcatcher.data.repository.ShizukuRepository
+import com.skibidi.lifeupcatcher.data.repository.ShizukuState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +36,8 @@ data class LauncherSettingsUiState(
 @HiltViewModel
 class LauncherViewModel @Inject constructor(
     private val application: Application,
-    private val launcherRepository: LauncherRepository
+    private val launcherRepository: LauncherRepository,
+    private val shizukuRepository: ShizukuRepository
 ) : AndroidViewModel(application) {
 
     private val alarmManager = application.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -45,8 +48,10 @@ class LauncherViewModel @Inject constructor(
         launcherRepository.focusLauncher,
         launcherRepository.startTime,
         launcherRepository.endTime,
-        launcherRepository.weekdays
+        launcherRepository.weekdays,
+        shizukuRepository.state
     ) { args: Array<Any?> ->
+        val shizukuState = args[6] as ShizukuState
         LauncherSettingsUiState(
             isServiceEnabled = args[0] as Boolean,
             mainLauncher = args[1] as String? ?: "",
@@ -54,7 +59,7 @@ class LauncherViewModel @Inject constructor(
             startTime = args[3] as String,
             endTime = args[4] as String,
             weekdays = (args[5] as List<*>).map { it as Boolean },
-            isShizukuAvailable = ShizukuUtils.isShizukuAvailable()
+            isShizukuAvailable = shizukuState.isAvailable && shizukuState.isPermissionGranted
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LauncherSettingsUiState())
 

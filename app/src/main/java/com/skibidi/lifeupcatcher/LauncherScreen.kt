@@ -81,7 +81,17 @@ fun LauncherScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (!uiState.isShizukuAvailable) {
+            Text(
+                text = "Shizuku is required for this feature.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
 
         // Launcher Selection
         Card(modifier = Modifier.fillMaxWidth()) {

@@ -1,5 +1,6 @@
 package com.skibidi.lifeupcatcher
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -39,9 +40,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import com.skibidi.lifeupcatcher.data.repository.DnsRepository
+import com.skibidi.lifeupcatcher.data.repository.SettingsRepository
 import com.skibidi.lifeupcatcher.ui.theme.LifeUpCatcherTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -50,9 +55,29 @@ class MainActivity : ComponentActivity() {
     private val dnsViewModel: DnsViewModel by viewModels()
     private val lockViewModel: LockViewModel by viewModels()
 
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
+
+    @Inject
+    lateinit var dnsRepository: DnsRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        lifecycleScope.launch {
+            combine(
+                settingsRepository.isMonitoringEnabled,
+                dnsRepository.isDnsLockingEnabled
+            ) { monitoring, dns -> monitoring || dns }.collect { shouldRun ->
+                val intent = Intent(this@MainActivity, MainService::class.java)
+                if (shouldRun) {
+                    startForegroundService(intent)
+                } else {
+                    stopService(intent)
+                }
+            }
+        }
 
         lifecycleScope.launch {
             lockViewModel.isLocked.collect { locked ->
