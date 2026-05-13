@@ -61,29 +61,31 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.skibidi.lifeupcatcher.data.local.entity.MonitoredItemEntity
 import rikka.shizuku.Shizuku
 
 @Composable
-fun ShopItemsScreen() {
+fun ShopItemsScreen(
+    viewModel: ShopItemsViewModel = hiltViewModel(),
+    isAccessibilityPermissionGranted: Boolean
+) {
     val context = LocalContext.current
-    val items by ShopItemRepository.items.collectAsState()
-    val isMonitoringEnabled by ShopItemRepository.isMonitoringEnabled.collectAsState()
-    val isShizukuEnabled by ShopItemRepository.isShizukuEnabled.collectAsState()
+    val items by viewModel.items.collectAsState()
+    val isMonitoringEnabled by viewModel.isMonitoringEnabled.collectAsState()
+    val isShizukuEnabled by viewModel.isShizukuEnabled.collectAsState()
 
-    val appPickerViewModel: AppPickerViewModel = viewModel(
-        factory = androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory(context.applicationContext as android.app.Application)
-    )
+    val appPickerViewModel: AppPickerViewModel = hiltViewModel()
     val groups by appPickerViewModel.groups.collectAsState()
 
     val showAddDialog = remember { mutableStateOf(false) }
-    val editingItem = remember { mutableStateOf<ShopItemState?>(null) }
+    val editingItem = remember { mutableStateOf<MonitoredItemEntity?>(null) }
     var shizukuAvailable by remember { mutableStateOf(false) }
 
     val shizukuPermissionListener = remember {
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
             if (requestCode == 1001 && grantResult == PackageManager.PERMISSION_GRANTED) {
-                ShopItemRepository.setShizukuEnabled(true)
+                viewModel.setShizukuEnabled(true)
             }
         }
     }
@@ -117,7 +119,7 @@ fun ShopItemsScreen() {
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ ->
-        ShopItemRepository.setMonitoringEnabled(true)
+        viewModel.setMonitoringEnabled(true)
         requestBackgroundPermission(context)
     }
 
@@ -134,6 +136,41 @@ fun ShopItemsScreen() {
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
+            if (!isAccessibilityPermissionGranted) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                        .clickable {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            context.startActivity(intent)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Accessibility Permission Required",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = "Tap here to enable it for app blocking.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -165,17 +202,17 @@ fun ShopItemsScreen() {
                             if (enabled) {
                                 if (Build.VERSION.SDK_INT >= 33) {
                                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                        ShopItemRepository.setMonitoringEnabled(true)
+                                        viewModel.setMonitoringEnabled(true)
                                         requestBackgroundPermission(context)
                                     } else {
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     }
                                 } else {
-                                    ShopItemRepository.setMonitoringEnabled(true)
+                                    viewModel.setMonitoringEnabled(true)
                                     requestBackgroundPermission(context)
                                 }
                             } else {
-                                ShopItemRepository.setMonitoringEnabled(false)
+                                viewModel.setMonitoringEnabled(false)
                             }
                         }
                     )
@@ -214,7 +251,7 @@ fun ShopItemsScreen() {
                                 try {
                                     if (shizukuAvailable || Shizuku.pingBinder()) {
                                         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                                            ShopItemRepository.setShizukuEnabled(true)
+                                            viewModel.setShizukuEnabled(true)
                                         } else {
                                             Shizuku.requestPermission(1001)
                                         }
@@ -225,7 +262,7 @@ fun ShopItemsScreen() {
                                     Toast.makeText(context, "Shizuku error: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                ShopItemRepository.setShizukuEnabled(false)
+                                viewModel.setShizukuEnabled(false)
                             }
                         }
                     )
@@ -239,7 +276,8 @@ fun ShopItemsScreen() {
                     ShopItemRow(
                         item = item,
                         groups = groups,
-                        onEdit = { editingItem.value = item }
+                        onEdit = { editingItem.value = item },
+                        onDelete = { viewModel.removeItem(item.name) }
                     )
                 }
             }
@@ -253,7 +291,7 @@ fun ShopItemsScreen() {
             onDismiss = { showAddDialog.value = false },
             onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit ->
                 if (name.isNotBlank()) {
-                    ShopItemRepository.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
+                    viewModel.addItem(name.trim(), groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
                 }
                 showAddDialog.value = false
             }
@@ -267,7 +305,7 @@ fun ShopItemsScreen() {
             isShizukuEnabled = isShizukuEnabled,
             onDismiss = { editingItem.value = null },
             onConfirm = { name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit ->
-                ShopItemRepository.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
+                viewModel.updateItem(name, groupId, startMsg, stopMsg, quitMsg, technique, weekdayLimit)
                 editingItem.value = null
             }
         )
@@ -277,7 +315,7 @@ fun ShopItemsScreen() {
 @Composable
 fun ItemDialog(
     groups: List<AppGroup>,
-    item: ShopItemState? = null,
+    item: MonitoredItemEntity? = null,
     isShizukuEnabled: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (name: String, groupId: String?, startMsg: String?, stopMsg: String?, quitMsg: String?, blockingTechnique: String, weekdayLimit: Set<String>) -> Unit
@@ -559,7 +597,7 @@ fun ItemDialog(
 
 
 @Composable
-fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit) {
+fun ShopItemRow(item: MonitoredItemEntity, groups: List<AppGroup>, onEdit: () -> Unit, onDelete: () -> Unit) {
     val selectedGroup = groups.find { it.id == item.linkedGroupId }
 
     Row(
@@ -600,7 +638,7 @@ fun ShopItemRow(item: ShopItemState, groups: List<AppGroup>, onEdit: () -> Unit)
         IconButton(onClick = onEdit) {
             Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.Black)
         }
-        IconButton(onClick = { ShopItemRepository.removeItem(item.name) }) {
+        IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color.Black)
         }
     }

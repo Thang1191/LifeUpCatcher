@@ -31,9 +31,13 @@ import rikka.shizuku.Shizuku
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
+import androidx.hilt.navigation.compose.hiltViewModel
+
 @Composable
-fun DebugScreen() {
-    val isDebuggingEnabled by ShopItemRepository.isDebuggingEnabled.collectAsState()
+fun DebugScreen(
+    viewModel: DebugViewModel = hiltViewModel()
+) {
+    val isDebuggingEnabled by viewModel.isDebuggingEnabled.collectAsState()
     var command by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -58,7 +62,7 @@ fun DebugScreen() {
                 Text("Debug Mode", modifier = Modifier.weight(1f))
                 Switch(
                     checked = isDebuggingEnabled,
-                    onCheckedChange = { ShopItemRepository.setDebuggingEnabled(it) }
+                    onCheckedChange = { viewModel.setDebuggingEnabled(it) }
                 )
             }
         }
@@ -78,30 +82,7 @@ fun DebugScreen() {
             Button(
                 onClick = {
                     scope.launch {
-                        if (command.isNotBlank() && Shizuku.pingBinder()) {
-                            try {
-                                val newProcessMethod = Shizuku::class.java.getDeclaredMethod(
-                                    "newProcess",
-                                    Array<String>::class.java,
-                                    Array<String>::class.java,
-                                    String::class.java
-                                )
-                                newProcessMethod.isAccessible = true
-                                val process = newProcessMethod.invoke(
-                                    null,
-                                    arrayOf("sh", "-c", command),
-                                    null,
-                                    null
-                                ) as Process
-
-                                val stdOut = BufferedReader(InputStreamReader(process.inputStream)).readText()
-                                val stdErr = BufferedReader(InputStreamReader(process.errorStream)).readText()
-                                process.waitFor()
-                                output = "Exit Code: ${process.exitValue()}\n\nSTDOUT:\n$stdOut\n\nSTDERR:\n$stdErr"
-                            } catch (e: Exception) {
-                                output = "Error: ${e.message}"
-                            }
-                        }
+                        output = viewModel.executeCommand(command)
                     }
                 },
                 modifier = Modifier.align(Alignment.End)

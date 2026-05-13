@@ -65,13 +65,20 @@ import androidx.core.content.edit
 import androidx.core.graphics.createBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.skibidi.lifeupcatcher.data.local.entity.AppGroupEntity
+import com.skibidi.lifeupcatcher.data.repository.AppGroupRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import javax.inject.Inject
 
 data class AppInfo(
     val packageName: String,
@@ -87,18 +94,20 @@ data class AppGroup(
     val packageNames: Set<String>
 )
 
-class AppPickerViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class AppPickerViewModel @Inject constructor(
+    application: Application,
+    private val appGroupRepository: AppGroupRepository
+) : AndroidViewModel(application) {
     private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
     val apps: StateFlow<List<AppInfo>> = _apps
 
-    private val _groups = MutableStateFlow<List<AppGroup>>(emptyList())
-    val groups: StateFlow<List<AppGroup>> = _groups
-
-    private val prefs = application.getSharedPreferences("app_picker_prefs", Context.MODE_PRIVATE)
+    val groups: StateFlow<List<AppGroup>> = appGroupRepository.allGroups.map { entities ->
+        entities.map { AppGroup(it.id, it.name, it.packageNames) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         loadApps()
-        loadGroups()
     }
 
     private fun loadApps() {
@@ -127,65 +136,25 @@ class AppPickerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun loadGroups() {
-        val jsonString = prefs.getString("app_groups", "[]") ?: "[]"
-        try {
-            val jsonArray = JSONArray(jsonString)
-            val list = mutableListOf<AppGroup>()
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val id = obj.getString("id")
-                val name = obj.getString("name")
-                val packagesArray = obj.getJSONArray("packages")
-                val packages = mutableSetOf<String>()
-                for (j in 0 until packagesArray.length()) {
-                    packages.add(packagesArray.getString(j))
-                }
-                list.add(AppGroup(id, name, packages))
-            }
-            _groups.value = list
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _groups.value = emptyList()
+    fun saveGroup(name: String, selectedPackages: Set<String>) {
+        viewModelScope.launch {
+            appGroupRepository.addGroup(AppGroupEntity(name = name, packageNames = selectedPackages))
         }
     }
 
-    fun saveGroup(name: String, selectedPackages: Set<String>) {
-        val newGroup = AppGroup(name = name, packageNames = selectedPackages)
-        val currentGroups = _groups.value.toMutableList()
-        currentGroups.add(newGroup)
-        _groups.value = currentGroups
-        persistGroups(currentGroups)
-    }
-
     fun updateGroup(id: String, name: String, selectedPackages: Set<String>) {
-        val currentGroups = _groups.value.toMutableList()
-        val index = currentGroups.indexOfFirst { it.id == id }
-        if (index != -1) {
-            currentGroups[index] = AppGroup(id, name, selectedPackages)
-            _groups.value = currentGroups
-            persistGroups(currentGroups)
+        viewModelScope.launch {
+            appGroupRepository.updateGroup(AppGroupEntity(id, name, selectedPackages))
         }
     }
 
     fun deleteGroup(groupId: String) {
-        val currentGroups = _groups.value.filter { it.id != groupId }
-        _groups.value = currentGroups
-        persistGroups(currentGroups)
-    }
-
-    private fun persistGroups(groups: List<AppGroup>) {
-        val jsonArray = JSONArray()
-        groups.forEach { group ->
-            val obj = JSONObject()
-            obj.put("id", group.id)
-            obj.put("name", group.name)
-            val packagesArray = JSONArray()
-            group.packageNames.forEach { packagesArray.put(it) }
-            obj.put("packages", packagesArray)
-            jsonArray.put(obj)
+        viewModelScope.launch {
+            val group = appGroupRepository.getGroupById(groupId)
+            if (group != null) {
+                appGroupRepository.deleteGroup(group)
+            }
         }
-        prefs.edit { putString("app_groups", jsonArray.toString()) }
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {

@@ -39,12 +39,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import java.util.Locale
 
 @Composable
 fun LauncherScreen(
-    viewModel: LauncherViewModel = viewModel()
+    viewModel: LauncherViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var installedLaunchers by remember { mutableStateOf(emptyList<String>()) }
@@ -165,7 +165,7 @@ fun LauncherDropdown(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor(MenuAnchorType.PrimaryEditable, false)
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                 .fillMaxWidth()
         )
         ExposedDropdownMenu(

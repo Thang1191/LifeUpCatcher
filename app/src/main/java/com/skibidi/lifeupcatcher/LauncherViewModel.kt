@@ -9,12 +9,15 @@ import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.skibidi.lifeupcatcher.data.repository.LauncherRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import javax.inject.Inject
 
 private const val TAG = "LauncherViewModel"
 
@@ -28,37 +31,32 @@ data class LauncherSettingsUiState(
     val isShizukuAvailable: Boolean = false
 )
 
-class LauncherViewModel(private val application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class LauncherViewModel @Inject constructor(
+    private val application: Application,
+    private val launcherRepository: LauncherRepository
+) : AndroidViewModel(application) {
 
-    private val repository = LauncherSettingsRepository(application)
     private val alarmManager = application.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    private val _uiState = MutableStateFlow(LauncherSettingsUiState())
-    val uiState: StateFlow<LauncherSettingsUiState> = _uiState.asStateFlow()
-
-    init {
-        loadSettings()
-        checkShizukuStatus()
-    }
-
-    private fun loadSettings() {
-        viewModelScope.launch {
-            _uiState.update { currentState ->
-                currentState.copy(
-                    isServiceEnabled = repository.isServiceEnabled,
-                    mainLauncher = repository.mainLauncher ?: "",
-                    focusLauncher = repository.focusLauncher ?: "",
-                    startTime = repository.startTime,
-                    endTime = repository.endTime,
-                    weekdays = repository.weekdays
-                )
-            }
-        }
-    }
-
-    private fun checkShizukuStatus() {
-        _uiState.update { it.copy(isShizukuAvailable = ShizukuUtils.isShizukuAvailable()) }
-    }
+    val uiState: StateFlow<LauncherSettingsUiState> = combine(
+        launcherRepository.isServiceEnabled,
+        launcherRepository.mainLauncher,
+        launcherRepository.focusLauncher,
+        launcherRepository.startTime,
+        launcherRepository.endTime,
+        launcherRepository.weekdays
+    ) { args: Array<Any?> ->
+        LauncherSettingsUiState(
+            isServiceEnabled = args[0] as Boolean,
+            mainLauncher = args[1] as String? ?: "",
+            focusLauncher = args[2] as String? ?: "",
+            startTime = args[3] as String,
+            endTime = args[4] as String,
+            weekdays = (args[5] as List<*>).map { it as Boolean },
+            isShizukuAvailable = ShizukuUtils.isShizukuAvailable()
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LauncherSettingsUiState())
 
     fun setServiceEnabled(isEnabled: Boolean) {
         if (!ShizukuUtils.isShizukuAvailable()) {
@@ -66,24 +64,24 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
             return
         }
 
-        repository.isServiceEnabled = isEnabled
-        _uiState.update { it.copy(isServiceEnabled = isEnabled) }
-
-        if (isEnabled) {
-            Log.d(TAG, "Enabling launcher service and scheduling switch.")
-            scheduleLauncherSwitch()
-            checkTimeWindowAndSwitchIfNeeded()
-        } else {
-            Log.d(TAG, "Disabling launcher service and canceling switch.")
-            cancelLauncherSwitch()
-            switchToMainLauncher() // Revert to main launcher when service is disabled
+        viewModelScope.launch {
+            launcherRepository.setServiceEnabled(isEnabled)
+            if (isEnabled) {
+                Log.d(TAG, "Enabling launcher service and scheduling switch.")
+                scheduleLauncherSwitch()
+                checkTimeWindowAndSwitchIfNeeded()
+            } else {
+                Log.d(TAG, "Disabling launcher service and canceling switch.")
+                cancelLauncherSwitch()
+                switchToMainLauncher()
+            }
         }
     }
 
     private fun switchToMainLauncher() {
         viewModelScope.launch {
-            val mainLauncher = repository.mainLauncher
-            if (!mainLauncher.isNullOrBlank()) {
+            val mainLauncher = uiState.value.mainLauncher
+            if (mainLauncher.isNotBlank()) {
                 ShizukuUtils.executeCommand("pm set-home-activity $mainLauncher")
             }
         }
@@ -92,18 +90,19 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     private fun checkTimeWindowAndSwitchIfNeeded() {
         val today = Calendar.getInstance()
         val todayIndex = (today.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Monday is 0, Sunday is 6
-        if (repository.weekdays.getOrNull(todayIndex) != true) {
+        val currentState = uiState.value
+        if (currentState.weekdays.getOrNull(todayIndex) != true) {
             Log.d(TAG, "Immediate check: Not an active day.")
             switchToMainLauncher()
             return
         }
 
-        val isInWindow = isCurrentTimeInWindow(repository.startTime, repository.endTime)
-        val targetLauncher = if (isInWindow) repository.focusLauncher else repository.mainLauncher
+        val isInWindow = isCurrentTimeInWindow(currentState.startTime, currentState.endTime)
+        val targetLauncher = if (isInWindow) currentState.focusLauncher else currentState.mainLauncher
         val launcherType = if (isInWindow) "FOCUS" else "MAIN"
 
         viewModelScope.launch {
-            if (!targetLauncher.isNullOrBlank()) {
+            if (targetLauncher.isNotBlank()) {
                 Log.d(TAG, "Immediate check: Switching to $launcherType launcher.")
                 ShizukuUtils.executeCommand("pm set-home-activity $targetLauncher")
             }
@@ -111,28 +110,23 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
     }
 
     fun setMainLauncher(packageName: String) {
-        repository.mainLauncher = packageName
-        _uiState.update { it.copy(mainLauncher = packageName) }
+        viewModelScope.launch { launcherRepository.setMainLauncher(packageName) }
     }
 
     fun setFocusLauncher(packageName: String) {
-        repository.focusLauncher = packageName
-        _uiState.update { it.copy(focusLauncher = packageName) }
+        viewModelScope.launch { launcherRepository.setFocusLauncher(packageName) }
     }
 
     fun setStartTime(time: String) {
-        repository.startTime = time
-        _uiState.update { it.copy(startTime = time) }
+        viewModelScope.launch { launcherRepository.setStartTime(time) }
     }
 
     fun setEndTime(time: String) {
-        repository.endTime = time
-        _uiState.update { it.copy(endTime = time) }
+        viewModelScope.launch { launcherRepository.setEndTime(time) }
     }
 
     fun setWeekdays(weekdays: List<Boolean>) {
-        repository.weekdays = weekdays
-        _uiState.update { it.copy(weekdays = weekdays) }
+        viewModelScope.launch { launcherRepository.setWeekdays(weekdays) }
     }
 
     private fun scheduleLauncherSwitch() {
@@ -142,12 +136,13 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
         }
 
         val now = Calendar.getInstance()
+        val currentState = uiState.value
 
-        val startTime = repository.startTime.split(":")
+        val startTime = currentState.startTime.split(":")
         val startHour = startTime[0].toInt()
         val startMinute = startTime[1].toInt()
 
-        val endTime = repository.endTime.split(":")
+        val endTime = currentState.endTime.split(":")
         val endHour = endTime[0].toInt()
         val endMinute = endTime[1].toInt()
 
@@ -172,10 +167,10 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
         }
 
         val focusIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_FOCUS_LAUNCHER
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_MAIN_LAUNCHER
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -197,10 +192,10 @@ class LauncherViewModel(private val application: Application) : AndroidViewModel
 
     private fun cancelLauncherSwitch() {
         val focusIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_FOCUS_LAUNCHER
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_FOCUS_LAUNCHER"
         }
         val mainIntent = Intent(application, LauncherSwitchReceiver::class.java).apply {
-            action = LauncherSwitchReceiver.ACTION_SWITCH_TO_MAIN_LAUNCHER
+            action = "com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER"
         }
 
         val focusPendingIntent = PendingIntent.getBroadcast(application, 0, focusIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

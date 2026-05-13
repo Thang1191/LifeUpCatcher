@@ -30,18 +30,20 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.*
+import com.skibidi.lifeupcatcher.data.repository.SettingsRepository
+import com.skibidi.lifeupcatcher.data.repository.SleepSettings
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
 data class ProcessedSleepData(
     val totalSleepTime: Duration,
@@ -50,12 +52,160 @@ data class ProcessedSleepData(
     val sessionEnd: ZonedDateTime
 )
 
-@Composable
-fun SleepScreen() {
-    val viewModel: HealthConnectViewModel = viewModel(
-        factory = HealthConnectViewModelFactory(LocalContext.current.applicationContext as Application)
-    )
+@HiltViewModel
+class HealthConnectViewModel @Inject constructor(
+    application: Application,
+    private val settingsRepository: SettingsRepository
+) : AndroidViewModel(application) {
 
+    private val context: Context get() = getApplication<Application>().applicationContext
+
+    val healthConnectClient: HealthConnectClient? =
+        if (HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_UNAVAILABLE) null
+        else HealthConnectClient.getOrCreate(context)
+
+    private val _availability = MutableStateFlow(checkAvailability())
+    val availability: StateFlow<HealthConnectAvailability> = _availability
+
+    val permissions = setOf(HealthPermission.getReadPermission(SleepSessionRecord::class))
+    val permissionsContract: ActivityResultContract<Set<String>, Set<String>> =
+        PermissionController.createRequestPermissionResultContract()
+
+    private val _permissionsGranted = MutableStateFlow(false)
+    val permissionsGranted: StateFlow<Boolean> = _permissionsGranted
+
+    private val _sleepData = MutableStateFlow<List<ProcessedSleepData>>(emptyList())
+    val sleepData: StateFlow<List<ProcessedSleepData>> = _sleepData
+
+    val settings: StateFlow<SleepSettings> = settingsRepository.sleepSettingsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepSettings())
+
+    init {
+        if (healthConnectClient != null) {
+            checkPermissions()
+        }
+    }
+
+    fun onPermissionsResult(grantedPermissions: Set<String>) {
+        _permissionsGranted.value = grantedPermissions.containsAll(permissions)
+        if (_permissionsGranted.value) {
+            loadSleepData()
+        }
+    }
+
+    private fun checkPermissions() {
+        viewModelScope.launch {
+            _permissionsGranted.value = hasPermissions(permissions)
+            if (_permissionsGranted.value) {
+                loadSleepData()
+            }
+        }
+    }
+
+    private suspend fun hasPermissions(permissions: Set<String>): Boolean {
+        return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) ?: false
+    }
+
+    fun loadSleepData() {
+        viewModelScope.launch {
+            if (hasPermissions(permissions)) {
+                try {
+                    val end = ZonedDateTime.now()
+                    val start = end.minusDays(1)
+                    val response = healthConnectClient?.readRecords(
+                        ReadRecordsRequest(
+                            SleepSessionRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start.toInstant(), end.toInstant())
+                        )
+                    )
+                    _sleepData.value = response?.records?.map { processSleepSession(it) } ?: emptyList()
+                } catch (e: Exception) {
+                    Log.e("HealthConnectViewModel", "Error reading sleep data", e)
+                }
+            }
+        }
+    }
+
+    fun saveSettings(newSettings: SleepSettings) {
+        viewModelScope.launch {
+            settingsRepository.updateSleepSettings(newSettings)
+            if (newSettings.isServiceEnabled) {
+                scheduleSleepCheckWorker(newSettings)
+            } else {
+                cancelSleepCheckWorker()
+            }
+        }
+    }
+
+    private fun scheduleSleepCheckWorker(settings: SleepSettings) {
+        val workManager = WorkManager.getInstance(context)
+        val workRequestTag = "sleep-check-worker"
+
+        val now = LocalDateTime.now()
+        var nextCheck = now
+            .withHour(settings.checkHour)
+            .withMinute(settings.checkMinute)
+            .withSecond(0)
+
+        if (nextCheck.isBefore(now)) {
+            nextCheck = nextCheck.plusDays(1)
+        }
+
+        val initialDelay = Duration.between(now, nextCheck).toMillis()
+
+        Log.d("HealthConnectViewModel", "Scheduling worker. Next check: $nextCheck, Initial delay: $initialDelay ms")
+
+        val sleepCheckWorkRequest = OneTimeWorkRequestBuilder<SleepCheckWorker>()
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+            .addTag(workRequestTag)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            workRequestTag,
+            ExistingWorkPolicy.REPLACE,
+            sleepCheckWorkRequest
+        )
+    }
+
+    private fun cancelSleepCheckWorker() {
+        WorkManager.getInstance(context).cancelUniqueWork("sleep-check-worker")
+    }
+
+    private fun processSleepSession(session: SleepSessionRecord): ProcessedSleepData {
+        val sessionDuration = Duration.between(session.startTime, session.endTime)
+        var totalSleepTime = Duration.ZERO
+
+        if (session.stages.isNotEmpty()) {
+            session.stages.forEach { stage ->
+                if (stage.stage != SleepSessionRecord.STAGE_TYPE_AWAKE) {
+                    totalSleepTime = totalSleepTime.plus(Duration.between(stage.startTime, stage.endTime))
+                }
+            }
+        } else {
+            totalSleepTime = sessionDuration
+        }
+
+        return ProcessedSleepData(
+            totalSleepTime = totalSleepTime,
+            sessionDuration = sessionDuration,
+            sessionStart = ZonedDateTime.ofInstant(session.startTime, session.startZoneOffset),
+            sessionEnd = ZonedDateTime.ofInstant(session.endTime, session.endZoneOffset)
+        )
+    }
+
+    private fun checkAvailability(): HealthConnectAvailability {
+        return when (HealthConnectClient.getSdkStatus(context)) {
+            HealthConnectClient.SDK_AVAILABLE -> HealthConnectAvailability.Available
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED, HealthConnectClient.SDK_UNAVAILABLE -> HealthConnectAvailability.NotInstalled
+            else -> HealthConnectAvailability.NotSupported
+        }
+    }
+}
+
+@Composable
+fun SleepScreen(
+    viewModel: HealthConnectViewModel = hiltViewModel()
+) {
     val availability by viewModel.availability.collectAsState()
     val permissionsGranted by viewModel.permissionsGranted.collectAsState()
     val sleepData by viewModel.sleepData.collectAsState()
@@ -73,7 +223,7 @@ fun SleepScreen() {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState()), // Make screen scrollable
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (availability) {
@@ -150,7 +300,6 @@ fun NotificationPermissionRequest() {
         }
     }
 }
-
 
 @Composable
 fun SleepRewardSettings(
@@ -316,7 +465,6 @@ fun SleepRewardSettings(
                     failureTitle = failureTitle,
                     failureMessage = failureMessage
                 )
-                Log.d("SleepRewardSettings", "Save button clicked with settings: $newSettings")
                 onSave(newSettings)
             }) {
                 Text("Save Settings")
@@ -361,168 +509,4 @@ private fun openHealthConnectInstall(context: Context) {
 
 enum class HealthConnectAvailability {
     Available, NotInstalled, NotSupported
-}
-
-class HealthConnectViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val context: Context get() = getApplication<Application>().applicationContext
-    private val settingsRepository = SleepSettingsRepository(context)
-
-    val healthConnectClient: HealthConnectClient? =
-        if (HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_UNAVAILABLE) null
-        else HealthConnectClient.getOrCreate(context)
-
-    private val _availability = MutableStateFlow(checkAvailability())
-    val availability: StateFlow<HealthConnectAvailability> = _availability
-
-    val permissions = setOf(HealthPermission.getReadPermission(SleepSessionRecord::class))
-    val permissionsContract: ActivityResultContract<Set<String>, Set<String>> =
-        PermissionController.createRequestPermissionResultContract()
-
-    private val _permissionsGranted = MutableStateFlow(false)
-    val permissionsGranted: StateFlow<Boolean> = _permissionsGranted
-
-    private val _sleepData = MutableStateFlow<List<ProcessedSleepData>>(emptyList())
-    val sleepData: StateFlow<List<ProcessedSleepData>> = _sleepData
-
-    val settings: StateFlow<SleepSettings> = settingsRepository.sleepSettingsFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepSettings())
-
-    init {
-        if (healthConnectClient != null) {
-            checkPermissions()
-        }
-    }
-
-    fun onPermissionsResult(grantedPermissions: Set<String>) {
-        _permissionsGranted.value = grantedPermissions.containsAll(permissions)
-        if (_permissionsGranted.value) {
-            loadSleepData()
-        }
-    }
-
-    private fun checkPermissions() {
-        viewModelScope.launch {
-            _permissionsGranted.value = hasPermissions(permissions)
-            if (_permissionsGranted.value) {
-                loadSleepData()
-            }
-        }
-    }
-
-    private suspend fun hasPermissions(permissions: Set<String>): Boolean {
-        return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) ?: false
-    }
-
-
-
-    fun loadSleepData() {
-        viewModelScope.launch {
-            if (hasPermissions(permissions)) {
-                try {
-                    val end = ZonedDateTime.now()
-                    val start = end.minusDays(1)
-                    val response = healthConnectClient?.readRecords(
-                        ReadRecordsRequest(
-                            SleepSessionRecord::class,
-                            timeRangeFilter = TimeRangeFilter.between(start.toInstant(), end.toInstant())
-                        )
-                    )
-                    _sleepData.value = response?.records?.map { processSleepSession(it) } ?: emptyList()
-                } catch (e: Exception) {
-                    Log.e("HealthConnectViewModel", "Error reading sleep data", e)
-                }
-            }
-        }
-    }
-
-    fun saveSettings(newSettings: SleepSettings) {
-        viewModelScope.launch {
-            settingsRepository.updateSettings(newSettings)
-            if (newSettings.isServiceEnabled) {
-                scheduleSleepCheckWorker(newSettings)
-            } else {
-                cancelSleepCheckWorker()
-            }
-        }
-    }
-
-    private fun scheduleSleepCheckWorker(settings: SleepSettings) {
-        val workManager = WorkManager.getInstance(context)
-        val workRequestTag = "sleep-check-worker"
-
-        val now = LocalDateTime.now()
-        var nextCheck = now
-            .withHour(settings.checkHour)
-            .withMinute(settings.checkMinute)
-            .withSecond(0)
-
-        if (nextCheck.isBefore(now)) {
-            nextCheck = nextCheck.plusDays(1)
-        }
-
-        val initialDelay = Duration.between(now, nextCheck).toMillis()
-
-        Log.d("HealthConnectViewModel", "Scheduling worker. Next check: $nextCheck, Initial delay: $initialDelay ms")
-
-        val sleepCheckWorkRequest = OneTimeWorkRequestBuilder<SleepCheckWorker>()
-            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
-            .addTag(workRequestTag)
-            .build()
-
-        workManager.enqueueUniqueWork(
-            workRequestTag,
-            ExistingWorkPolicy.REPLACE,
-            sleepCheckWorkRequest
-        )
-        Log.d("HealthConnectViewModel", "Work request enqueued with tag: $workRequestTag")
-    }
-
-    private fun cancelSleepCheckWorker() {
-        val workManager = WorkManager.getInstance(context)
-        val workRequestTag = "sleep-check-worker"
-        workManager.cancelUniqueWork(workRequestTag)
-        Log.d("HealthConnectViewModel", "Cancelled work request with tag: $workRequestTag")
-    }
-
-
-    private fun processSleepSession(session: SleepSessionRecord): ProcessedSleepData {
-        val sessionDuration = Duration.between(session.startTime, session.endTime)
-        var totalSleepTime = Duration.ZERO
-
-        if (session.stages.isNotEmpty()) {
-            session.stages.forEach { stage ->
-                if (stage.stage != SleepSessionRecord.STAGE_TYPE_AWAKE) {
-                    totalSleepTime = totalSleepTime.plus(Duration.between(stage.startTime, stage.endTime))
-                }
-            }
-        } else {
-            totalSleepTime = sessionDuration
-        }
-
-        return ProcessedSleepData(
-            totalSleepTime = totalSleepTime,
-            sessionDuration = sessionDuration,
-            sessionStart = ZonedDateTime.ofInstant(session.startTime, session.startZoneOffset),
-            sessionEnd = ZonedDateTime.ofInstant(session.endTime, session.endZoneOffset)
-        )
-    }
-
-    private fun checkAvailability(): HealthConnectAvailability {
-        return when (HealthConnectClient.getSdkStatus(context)) {
-            HealthConnectClient.SDK_AVAILABLE -> HealthConnectAvailability.Available
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED, HealthConnectClient.SDK_UNAVAILABLE -> HealthConnectAvailability.NotInstalled
-            else -> HealthConnectAvailability.NotSupported
-        }
-    }
-}
-
-class HealthConnectViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(HealthConnectViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return HealthConnectViewModel(application) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
 }

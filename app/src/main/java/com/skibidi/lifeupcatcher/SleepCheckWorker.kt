@@ -11,6 +11,10 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.work.*
+import androidx.hilt.work.HiltWorker
+import com.skibidi.lifeupcatcher.data.repository.SettingsRepository
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -19,12 +23,12 @@ import java.time.LocalDateTime
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
-class SleepCheckWorker(
-    appContext: Context,
-    workerParams: WorkerParameters
+@HiltWorker
+class SleepCheckWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted workerParams: WorkerParameters,
+    private val settingsRepository: SettingsRepository
 ) : CoroutineWorker(appContext, workerParams) {
-
-    private val settingsRepository = SleepSettingsRepository(applicationContext)
 
     override suspend fun doWork(): Result {
         Log.d("SleepCheckWorker", "Worker started.")

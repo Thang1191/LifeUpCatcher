@@ -20,6 +20,7 @@
     </queries>
 
     <application
+        android:name=".LifeUpCatcherApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -76,6 +77,26 @@
                 android:value="LifeUp Catcher monitors foreground apps to enforce blocking rules." />
         </service>
 
+        <service
+            android:name=".DnsLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="LifeUp Catcher enforces private DNS settings to ensure a secure and focused environment." />
+        </service>
+
+        <receiver
+            android:name=".LifeUpBroadcastReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="app.lifeup.item.countdown.start" />
+                <action android:name="app.lifeup.item.countdown.stop" />
+                <action android:name="app.lifeup.item.countdown.complete" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".LauncherSwitchReceiver"
             android:enabled="true"
@@ -85,6 +106,17 @@
                 <action android:name="com.skibidi.lifeupcatcher.SWITCH_TO_MAIN_LAUNCHER" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

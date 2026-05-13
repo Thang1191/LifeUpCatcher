@@ -112,5 +112,11 @@ Now, whenever you buy your item in LifeUp, your selected apps will be unblocked 
 *   `POST_NOTIFICATIONS`: To show a persistent notification, which is required by Android to keep the background monitoring service alive.
 *   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To ensure the operating system doesn't shut down the service to save battery.
 *   `MODIFY_QUIET_MODE`: To turn the work profile on and off.
+*   `WRITE_SECURE_SETTINGS`: Used via Shizuku to enforce Private DNS and other system settings.
+*   `health.READ_SLEEP`: To read your sleep data from Health Connect.
+*   `SCHEDULE_EXACT_ALARM`: To schedule the daily sleep check.
+istent notification, which is required by Android to keep the background monitoring service alive.
+*   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: To ensure the operating system doesn't shut down the service to save battery.
+*   `MODIFY_QUIET_MODE`: To turn the work profile on and off.
 *   `health.READ_SLEEP`: To read your sleep data from Health Connect.
 *   `SCHEDULE_EXACT_ALARM`: To schedule the daily sleep check.
